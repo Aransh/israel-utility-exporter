@@ -11,6 +11,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-16
+
 ### Added
 
 - First version: a Prometheus exporter for Israeli water (Read Your Meter Pro)
@@ -36,4 +38,5 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/commits/main
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Aransh/israel-utility-exporter/releases/tag/v0.1.0
