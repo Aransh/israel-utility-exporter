@@ -20,8 +20,9 @@ jobs:
       - run: npm ci
       - run: npm test # lint + build + unit tests
 
-  # Catches a broken Dockerfile (or a missing file it needs) before release,
-  # without pushing anything.
+  # Catches a broken Dockerfile (or a missing file it needs) on every push/PR,
+  # without pushing anything. Shares a cache scope with docker-release.yml's
+  # real build so a release doesn't redo this same layer work from scratch.
   docker-build:
     runs-on: ubuntu-latest
     steps:
@@ -31,3 +32,5 @@ jobs:
         with:
           context: .
           push: false
+          cache-from: type=gha,scope=israel-utility-exporter-image
+          cache-to: type=gha,mode=max,scope=israel-utility-exporter-image

@@ -137,6 +137,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ inputs.dry_run != true }}
           tags: ${{ steps.tags.outputs.tags }}
+          # Same cache scope as build.yml's docker-build job: the verify job
+          # that just ran (via workflow_call, below) already populated this
+          # for the amd64 layers, so only the arm64 platform is built fresh.
+          cache-from: type=gha,scope=israel-utility-exporter-image
+          cache-to: type=gha,mode=max,scope=israel-utility-exporter-image
 
       - name: Tag and create the GitHub release
         if: inputs.dry_run != true
