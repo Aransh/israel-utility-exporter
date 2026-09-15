@@ -264,22 +264,7 @@ To verify field names against your own account if something looks wrong, run
 with `LOG_LEVEL=debug` — both collectors log the raw shape of every API
 response they use at debug level.
 
-### Releasing
-
-1. Bump the version: `npm version 1.0.0 --no-git-tag-version` (updates
-   `package.json` and `package-lock.json` together), or edit the version
-   in-place in those same two files.
-2. Update [`CHANGELOG.md`](CHANGELOG.md) with the relevant changes, under a
-   `## [1.0.0] - YYYY-MM-DD` heading. Commit and merge both.
-3. Actions → **docker-release** → *Run workflow*. Give it the tag (`v1.0.0`),
-   tick **prerelease** for anything like `v1.0.0-beta.2`, and run it.
-
-The workflow re-runs the full build, builds and pushes a multi-arch
-(`linux/amd64`, `linux/arm64`) image to
-[Docker Hub](https://hub.docker.com/r/aransh/israel-utility-exporter) tagged
-with the version (and `latest`, for a non-prerelease), then creates the git
-tag and GitHub release with that version's `CHANGELOG.md` section as its notes
-verbatim. Tick **dry run** to build without pushing or releasing anything.
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## Credits
 
