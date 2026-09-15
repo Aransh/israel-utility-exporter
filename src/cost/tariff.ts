@@ -1,0 +1,151 @@
+/**
+ * Cost estimation for consumption already fetched from the water/electricity
+ * APIs. Two modes:
+ *
+ * - `flat`: one price times one quantity. The honest default for anyone not
+ *   on a time-of-use plan, and the fallback for a plan that doesn't fit the
+ *   schedule model below.
+ * - `schedule`: models Israeli time-of-use ("taoz") electricity plans, e.g.
+ *   "70% off 17:00-23:00". IEC never reports consumption finer than a whole
+ *   published day's total kWh (see README/plan notes — there is no hourly
+ *   resolution to attribute usage within a day), so this computes a
+ *   duration-weighted *blended* rate for the day being priced — the average
+ *   rate across that day's 1440 minutes, weighted by how many of them fall in
+ *   each tariff window — and multiplies the day's total kWh by that single
+ *   number. This assumes consumption is spread evenly across the day; it is
+ *   an estimate, not a bill reconstruction, and is exposed as its own metric
+ *   so that assumption is visible rather than hidden inside a cost figure.
+ */
+import { readFileSync } from 'node:fs';
+
+export type Weekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+const WEEKDAYS: readonly Weekday[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+export interface TariffWindow {
+  days: Weekday[];
+  /** "HH:MM", 24h. */
+  start: string;
+  /** "HH:MM", 24h. Must be later than `start` — express an overnight window as two entries. */
+  end: string;
+  /** 0-100. Percentage discount off `baseRatePerKwh` during this window. */
+  discountPercent: number;
+}
+
+export interface TariffSchedule {
+  currency: string;
+  baseRatePerKwh: number;
+  windows: TariffWindow[];
+}
+
+export class TariffScheduleError extends Error {}
+
+export function loadTariffSchedule(path: string): TariffSchedule {
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch (error) {
+    throw new TariffScheduleError(`Could not read tariff schedule at ${path}: ${describe(error)}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new TariffScheduleError(`Tariff schedule at ${path} is not valid JSON: ${describe(error)}`);
+  }
+  return validateSchedule(parsed, path);
+}
+
+function validateSchedule(value: unknown, path: string): TariffSchedule {
+  if (typeof value !== 'object' || value === null) {
+    throw new TariffScheduleError(`Tariff schedule at ${path} must be a JSON object.`);
+  }
+  const obj = value as Record<string, unknown>;
+  const baseRatePerKwh = Number(obj.baseRatePerKwh);
+  if (!Number.isFinite(baseRatePerKwh) || baseRatePerKwh <= 0) {
+    throw new TariffScheduleError(`Tariff schedule at ${path}: "baseRatePerKwh" must be a positive number.`);
+  }
+  const currency = typeof obj.currency === 'string' && obj.currency ? obj.currency : 'ILS';
+  const rawWindows = Array.isArray(obj.windows) ? obj.windows : [];
+  const windows = rawWindows.map((w, i) => validateWindow(w, i, path));
+  return { currency, baseRatePerKwh, windows };
+}
+
+function validateWindow(value: unknown, index: number, path: string): TariffWindow {
+  const label = `Tariff schedule at ${path}, windows[${index}]`;
+  if (typeof value !== 'object' || value === null) {
+    throw new TariffScheduleError(`${label} must be an object.`);
+  }
+  const obj = value as Record<string, unknown>;
+  const days = Array.isArray(obj.days) ? obj.days.filter(isWeekday) : [];
+  if (days.length === 0) {
+    throw new TariffScheduleError(`${label}: "days" must be a non-empty array of ${WEEKDAYS.join('/')}.`);
+  }
+  const start = parseTimeOfDay(obj.start, `${label}.start`);
+  const end = parseTimeOfDay(obj.end, `${label}.end`);
+  if (end <= start) {
+    throw new TariffScheduleError(
+      `${label}: "end" (${String(obj.end)}) must be later than "start" (${String(obj.start)}) on the same day. ` +
+        'Express an overnight window as two entries instead.',
+    );
+  }
+  const discountPercent = Number(obj.discountPercent);
+  if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+    throw new TariffScheduleError(`${label}: "discountPercent" must be between 0 and 100.`);
+  }
+  return { days: days as Weekday[], start: obj.start as string, end: obj.end as string, discountPercent };
+}
+
+function isWeekday(value: unknown): value is Weekday {
+  return typeof value === 'string' && (WEEKDAYS as readonly string[]).includes(value);
+}
+
+/** Minutes since midnight, or throws if not "HH:MM" in range. */
+function parseTimeOfDay(value: unknown, label: string): number {
+  if (typeof value !== 'string' || !/^([01]\d|2[0-3]):([0-5]\d)$/.test(value)) {
+    throw new TariffScheduleError(`${label} must be "HH:MM" (24h), got ${JSON.stringify(value)}.`);
+  }
+  const [h, m] = value.split(':').map(Number);
+  return h! * 60 + m!;
+}
+
+/**
+ * The duration-weighted average ILS/kWh rate for the given calendar day,
+ * across every window that includes that weekday. Minutes not covered by any
+ * window are priced at `baseRatePerKwh`.
+ */
+export function blendedRateForDay(schedule: TariffSchedule, date: Date): number {
+  const weekday = WEEKDAYS[date.getDay()]!;
+  const applicable = schedule.windows.filter((w) => w.days.includes(weekday));
+  if (applicable.length === 0) {
+    return schedule.baseRatePerKwh;
+  }
+
+  const MINUTES_PER_DAY = 24 * 60;
+  let discountedMinutes = 0;
+  let totalDiscountedRate = 0; // sum of (rate * minutes) for discounted minutes, to allow differing discounts
+  const covered = new Array<boolean>(MINUTES_PER_DAY).fill(false);
+
+  for (const window of applicable) {
+    const start = parseTimeOfDay(window.start, 'start');
+    const end = parseTimeOfDay(window.end, 'end');
+    const rate = schedule.baseRatePerKwh * (1 - window.discountPercent / 100);
+    for (let minute = start; minute < end; minute += 1) {
+      if (covered[minute]) {
+        // Overlapping windows for the same weekday: first-listed wins, so the
+        // schedule is deterministic rather than double-counting a minute.
+        continue;
+      }
+      covered[minute] = true;
+      discountedMinutes += 1;
+      totalDiscountedRate += rate;
+    }
+  }
+
+  const baseMinutes = MINUTES_PER_DAY - discountedMinutes;
+  const totalRate = totalDiscountedRate + baseMinutes * schedule.baseRatePerKwh;
+  return totalRate / MINUTES_PER_DAY;
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

@@ -1,0 +1,40 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: dropdown
+    id: collector
+    attributes:
+      label: Which collector?
+      options:
+        - Water (Read Your Meter Pro)
+        - Electricity (IEC)
+        - Both / neither — general exporter issue
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Image tag / version
+      placeholder: 'e.g. aransh/israel-utility-exporter:1.0.0'
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Container logs around the problem (redact your email/ID if it appears — it shouldn't, but check).
+      render: shell
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Your environment variables, WITH credentials/prices redacted.
+      render: shell

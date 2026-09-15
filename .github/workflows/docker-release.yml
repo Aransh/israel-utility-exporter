@@ -1,0 +1,173 @@
+name: docker-release
+
+# Manual only. Bump the version in package.json, add the matching
+# CHANGELOG.md section, merge that, then run this workflow from the Actions
+# tab with the matching tag. It re-runs the full build, builds and pushes a
+# multi-arch image to Docker Hub, then creates the tag and GitHub release with
+# that changelog section as its notes.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release, e.g. v1.0.0 or v1.0.0-beta.2. Must match the version in package.json.'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as a prerelease on GitHub and skip the "latest" Docker tag.'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: 'Build only. Pushes nothing and creates no tag or release.'
+        required: false
+        default: false
+        type: boolean
+
+# Never let two releases race for the same tag.
+concurrency:
+  group: docker-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Everything that can be wrong with the request, checked before anything is
+  # published — Docker Hub has no equivalent of "what version did I just tag",
+  # so a mismatch here would tag one version and ship another.
+  check:
+    runs-on: ubuntu-latest
+    if: github.repository == 'Aransh/israel-utility-exporter'
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # tags are the record of what has already been released
+
+      - name: Validate the request
+        id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          tag="${INPUT_TAG#v}"
+          if ! [[ "${tag}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::\"${INPUT_TAG}\" is not a version tag. Expected v1.2.3 or v1.2.3-beta.1."
+            exit 1
+          fi
+          version="${tag}"
+          tag="v${version}"
+
+          packaged=$(node -p "require('./package.json').version")
+          if [[ "${packaged}" != "${version}" ]]; then
+            echo "::error::package.json is at ${packaged}, but you asked to release ${tag}. Bump the version, merge it, then run this again."
+            exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "::error::${tag} already exists. Releases are immutable — pick a new version."
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Releasing ${tag} (prerelease: ${{ inputs.prerelease }}, dry run: ${{ inputs.dry_run }})."
+
+      # Checked here, before anything is published, because the release notes
+      # come from CHANGELOG.md and a missing section would otherwise only be
+      # discovered after the image is already on Docker Hub.
+      - name: Check the changelog documents this version
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! node scripts/changelog.mjs "${VERSION}" > /dev/null; then
+            echo "::error::CHANGELOG.md has no usable section for ${VERSION}. Add \"## [${VERSION}] - $(date -u +%Y-%m-%d)\" with the notes, merge it, then run this again."
+            exit 1
+          fi
+
+  # Reuses the normal build so a publish can only happen on a commit that
+  # passes lint, build, the unit tests and a Docker build.
+  verify:
+    needs: check
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    needs: [check, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and the GitHub release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: inputs.dry_run != true
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve image tags
+        id: tags
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          image="aransh/israel-utility-exporter"
+          tags="${image}:${VERSION}"
+          # A prerelease must never become the image "latest" tag pulls by default.
+          if [[ "${PRERELEASE}" != "true" ]]; then
+            tags="${tags},${image}:latest"
+          fi
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.dry_run != true }}
+          tags: ${{ steps.tags.outputs.tags }}
+
+      - name: Tag and create the GitHub release
+        if: inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "::notice::Release ${TAG} already exists — nothing to do."
+            exit 0
+          fi
+
+          # The changelog is the single source of truth for what a release
+          # contains, so the release notes are that section verbatim rather
+          # than a generated commit list. The check job already proved it exists.
+          notes=$(mktemp)
+          node scripts/changelog.mjs "${VERSION}" > "${notes}"
+          repo_url="https://github.com/${GITHUB_REPOSITORY}"
+          {
+            echo
+            echo "---"
+            echo
+            echo "[Full changelog](${repo_url}/blob/${TAG}/CHANGELOG.md) · [Docker Hub](https://hub.docker.com/r/aransh/israel-utility-exporter/tags?name=${VERSION})"
+          } >> "${notes}"
+
+          # gh creates the tag at --target, so there is no separate tag push.
+          gh release create "${TAG}" \
+            --target "${GITHUB_SHA}" \
+            --title "${TAG}" \
+            --notes-file "${notes}" \
+            $([ "${PRERELEASE}" = "true" ] && echo --prerelease)

@@ -1,0 +1,92 @@
+groups:
+  # Health/staleness alerts: these need no tuning and are safe to run as-is.
+  - name: israel-utility-exporter-health
+    rules:
+      - alert: ExporterDown
+        expr: up{job="israel-utility-exporter"} == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'israel-utility-exporter is unreachable'
+          description: 'Prometheus has not been able to scrape the exporter for 10 minutes. Check the container is running and PORT is reachable.'
+
+      - alert: WaterScrapeStale
+        expr: (time() - israel_utility_water_scrape_last_success_timestamp_seconds) > 6 * 3600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'No successful water poll in over 6 hours'
+          description: 'The water collector has not completed a successful poll of Read Your Meter Pro in over 6 hours. Check the exporter logs for the reason.'
+
+      - alert: ElectricityScrapeStale
+        expr: (time() - israel_utility_electricity_scrape_last_success_timestamp_seconds) > 6 * 3600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'No successful electricity poll in over 6 hours'
+          description: 'The electricity collector has not completed a successful poll of the IEC API in over 6 hours. Check the exporter logs for the reason.'
+
+      - alert: WaterScrapeFailing
+        expr: israel_utility_water_scrape_consecutive_failures >= 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Water collector has failed 3+ consecutive polls'
+          description: 'Check the exporter logs — likely a portal outage, rate limiting, or (if polling has stopped entirely) rejected credentials.'
+
+      - alert: ElectricityScrapeFailing
+        expr: israel_utility_electricity_scrape_consecutive_failures >= 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Electricity collector has failed 3+ consecutive polls'
+          description: 'Check the exporter logs. If it reports no token or a refresh failure, re-run the login CLI (see README).'
+
+      - alert: ElectricityTokenExpiringSoon
+        expr: (israel_utility_electricity_token_expires_timestamp_seconds - time()) < 3 * 86400
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: 'IEC session token expires within 3 days'
+          description: 'The exporter refreshes this automatically most of the time; this fires when it is unexpectedly close to expiry, which usually means the refresh token itself is about to lapse. Re-run the login CLI if the electricity metrics stop updating.'
+
+  # Example budget alerts: NOT safe to run as shipped. Consumption varies with
+  # household size, so these thresholds are illustrative starting points, not
+  # defaults — copy this group into your own rule file and size it to your
+  # household before enabling it. Starting points, mirroring Israel's
+  # subsidised water allocation and a reasonable daily electricity budget:
+  # ~400 L/person/day, ~3.5 m3 (3500 L)/person/month for water.
+  - name: israel-utility-exporter-budget-examples
+    rules:
+      - alert: WaterDailyConsumptionOverBudget
+        expr: israel_utility_water_consumption_daily_liters > 1600 # e.g. 400 L x 4 people
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: 'Daily water consumption over budget'
+          description: '{{ $value }} L on the most recently published day, meter {{ $labels.meter_id }}. Tune the threshold in this rule to your household size.'
+
+      - alert: WaterMonthlyConsumptionOverBudget
+        expr: israel_utility_water_consumption_monthly_liters > 14000 # e.g. 3500 L x 4 people
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: 'Monthly water consumption over the subsidised allocation'
+          description: '{{ $value }} L so far this month, meter {{ $labels.meter_id }}. Past this, Israeli water tariffs roughly double.'
+
+      - alert: ElectricityMonthlyConsumptionOverBudget
+        expr: israel_utility_electricity_consumption_monthly_kwh > 700 # illustrative only — size to your own history
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: 'Monthly electricity consumption over budget'
+          description: '{{ $value }} kWh so far this month, contract {{ $labels.contract_id }}. Tune the threshold in this rule to your own history — electricity use varies far more by household than water does.'

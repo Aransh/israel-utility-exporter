@@ -1,0 +1,11 @@
+node_modules
+dist
+test
+data
+.git
+.github
+*.md
+grafana
+prometheus
+docker-compose.yml
+.env

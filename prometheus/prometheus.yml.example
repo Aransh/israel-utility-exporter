@@ -1,0 +1,14 @@
+# Example Prometheus scrape config for israel-utility-exporter.
+# Merge this job (and the rule_files entry) into your existing prometheus.yml.
+# docker-compose.yml in this repo already wires up an equivalent config for
+# the bundled Prometheus container, so you only need this file if you're
+# running your own Prometheus instead.
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: israel-utility-exporter
+    scrape_interval: 5m # matches the exporter's own poll cadence; scraping faster gains nothing
+    static_configs:
+      - targets: ['israel-utility-exporter:9877']

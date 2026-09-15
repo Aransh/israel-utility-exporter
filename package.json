@@ -1,0 +1,54 @@
+{
+  "name": "israel-utility-exporter",
+  "version": "0.1.0",
+  "description": "Prometheus exporter for Israeli water (Read Your Meter Pro) and electricity (IEC) consumption data, with a ready-to-use Grafana dashboard and alert rules.",
+  "license": "MIT",
+  "author": "Aran Shavit",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "engines": {
+    "node": "^22.10.0 || ^24.0.0"
+  },
+  "keywords": [
+    "prometheus",
+    "prometheus-exporter",
+    "grafana",
+    "israel",
+    "iec",
+    "electricity",
+    "water",
+    "rympro",
+    "arad",
+    "utility-monitoring"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Aransh/israel-utility-exporter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Aransh/israel-utility-exporter/issues"
+  },
+  "homepage": "https://github.com/Aransh/israel-utility-exporter#readme",
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "watch": "tsc --watch",
+    "lint": "eslint . --max-warnings=0",
+    "test:unit": "node --import tsx --test test/**/*.test.ts",
+    "test": "npm run lint && npm run build && npm run test:unit",
+    "start": "node dist/index.js",
+    "login:electricity": "node dist/electricity/login-cli.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.1",
+    "rimraf": "^6.1.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4"
+  },
+  "dependencies": {
+    "@prometheus-io/client": "^0.16.1"
+  }
+}

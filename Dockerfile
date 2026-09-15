@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1
+
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+FROM node:24-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build /app/dist ./dist
+
+# Runs as an unprivileged user. /data is created and owned here so a fresh
+# named volume mounted over it (which Docker seeds from the image's existing
+# content and ownership) is writable without extra setup; a bind mount from
+# the host may still need its permissions matched manually.
+RUN addgroup -S exporter && adduser -S exporter -G exporter \
+  && mkdir -p /data && chown exporter:exporter /data
+USER exporter
+
+ENV PORT=9877
+ENV DATA_DIR=/data
+EXPOSE 9877
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD node -e "fetch('http://localhost:'+(process.env.PORT||9877)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "dist/index.js"]
