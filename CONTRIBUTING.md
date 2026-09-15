@@ -14,12 +14,16 @@ servers, so no real credentials are needed to run them.
 
 ## Every PR should include
 
-- **A version bump** in `package.json` (and `package-lock.json`, which stays
-  in sync automatically if you bump with `npm version <version>
-  --no-git-tag-version` rather than editing it by hand) — following [Semantic
-  Versioning](https://semver.org/spec/v2.0.0.html). Bugfix → patch, new
-  metric/feature → minor, breaking change (a renamed or removed metric,
-  config variable, etc.) → major.
+- **A version bump**, following [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
+  bugfix → patch, new metric/feature → minor, breaking change (a renamed or
+  removed metric, config variable, etc.) → major. Run
+  `npm version <version> --no-git-tag-version`, which bumps `package.json`
+  and `package-lock.json` together — or edit manually like this, keeping
+  both files' `version` field in sync:
+  ```json
+  // package.json and package-lock.json
+  "version": "<version>",
+  ```
 - **A [`CHANGELOG.md`](CHANGELOG.md) entry** for the change, under a new `##
   [x.y.z] - YYYY-MM-DD` heading (see the existing entries for the expected
   level of detail — the *why*, not just the *what*). This becomes the release
