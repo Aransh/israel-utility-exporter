@@ -29,7 +29,7 @@ ENV DATA_DIR=/data
 EXPOSE 9877
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD wget --quiet --tries=1 --spider "http://localhost:${PORT:-9877}/healthz" || exit 1
+  CMD wget --quiet --tries=1 --spider "http://localhost:${PORT:-9877}/healthz"
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/index.js"]
