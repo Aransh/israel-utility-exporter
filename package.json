@@ -1,6 +1,6 @@
 {
   "name": "israel-utility-exporter",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Prometheus exporter for Israeli water (Read Your Meter Pro) and electricity (IEC) consumption data, with a ready-to-use Grafana dashboard and alert rules.",
   "license": "MIT",
   "author": "Aran Shavit",
