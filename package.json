@@ -53,6 +53,6 @@
   "dependencies": {
     "@prometheus-io/client": "^0.16.1",
     "bcryptjs": "^2.4.3",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^5.0.0"
   }
 }
