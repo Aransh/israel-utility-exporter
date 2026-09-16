@@ -38,28 +38,49 @@ async function main(): Promise<void> {
 
   // Started before the collectors' first poll (which can take a while — a
   // slow or rate-limited portal shouldn't delay /healthz and /metrics coming up).
+  // A collector's own poll errors (bad credentials, network issues, ...) are
+  // already caught and logged inside it without rejecting `start()` — so a
+  // rejection here means something genuinely fatal (e.g. a corrupt state
+  // file), and the exporter should exit rather than keep serving /healthz
+  // as if that collector were working.
   const server = startServer(config.port, log, webConfig);
+  let failed = false;
+  const fail = (message: string): void => {
+    if (failed) {
+      return;
+    }
+    failed = true;
+    log.error(message);
+    process.exitCode = 1;
+    server.close(() => process.exit(1));
+    setTimeout(() => process.exit(1), 5_000).unref();
+  };
 
   const collectors: Array<{ stop: () => void }> = [];
 
-  if (config.water) {
-    log.info(
-      `Water collector enabled (poll every ${Math.round(config.water.pollIntervalMs / 60_000)}m, weekly window: ${config.water.weeklyWindow}).`,
-    );
-    const water = new WaterCollector(config.water, config.dataDir, log);
-    collectors.push(water);
-    water.start().catch((error: unknown) => {
-      log.error(`Water: failed to start: ${error instanceof Error ? error.message : String(error)}`);
-    });
-  }
+  try {
+    if (config.water) {
+      log.info(
+        `Water collector enabled (poll every ${Math.round(config.water.pollIntervalMs / 60_000)}m, weekly window: ${config.water.weeklyWindow}).`,
+      );
+      const water = new WaterCollector(config.water, config.dataDir, log);
+      collectors.push(water);
+      water.start().catch((error: unknown) => {
+        fail(`Water: failed to start: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
 
-  if (config.electricity) {
-    log.info(`Electricity collector enabled (poll every ${Math.round(config.electricity.pollIntervalMs / 60_000)}m).`);
-    const electricity = new ElectricityCollector(config.electricity, log);
-    collectors.push(electricity);
-    electricity.start().catch((error: unknown) => {
-      log.error(`Electricity: failed to start: ${error instanceof Error ? error.message : String(error)}`);
-    });
+    if (config.electricity) {
+      log.info(`Electricity collector enabled (poll every ${Math.round(config.electricity.pollIntervalMs / 60_000)}m).`);
+      const electricity = new ElectricityCollector(config.electricity, log);
+      collectors.push(electricity);
+      electricity.start().catch((error: unknown) => {
+        fail(`Electricity: failed to start: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
+  } catch (error) {
+    fail(`Failed to set up collectors: ${error instanceof Error ? error.message : String(error)}`);
+    return;
   }
 
   const shutdown = (signal: string) => {

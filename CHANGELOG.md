@@ -20,7 +20,11 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   instead of a separate `.env` file, which is gone along with `.env.example`.
 - The HTTP server now starts before the water/electricity collectors run
   their first poll, instead of after — so `/healthz` and `/metrics` come up
-  immediately rather than waiting on a slow or rate-limited portal.
+  immediately rather than waiting on a slow or rate-limited portal. A
+  collector's own poll errors still can't crash it, but a genuinely fatal
+  startup failure (a corrupt state file, an invalid tariff schedule) now
+  closes the server and exits non-zero, instead of leaving a falsely
+  "healthy" exporter running with that collector silently dead.
 - The Dockerfile's `HEALTHCHECK` no longer falls back to HTTPS when TLS is
   configured — it assumes plain HTTP; override it yourself if you enable
   `WEB_CONFIG_FILE`'s TLS support. Also dropped a redundant `|| exit 1`
