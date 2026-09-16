@@ -28,10 +28,6 @@ ENV PORT=9877
 ENV DATA_DIR=/data
 EXPOSE 9877
 
-# Assumes plain HTTP. If WEB_CONFIG_FILE enables TLS, /healthz moves to
-# https too (same port, same scheme as everything else) — override this
-# HEALTHCHECK (e.g. add --no-check-certificate https://... in your own
-# compose file) if you turn that on.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD wget --quiet --tries=1 --spider "http://localhost:${PORT:-9877}/healthz" || exit 1
 
