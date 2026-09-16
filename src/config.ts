@@ -31,6 +31,8 @@ export interface AppConfig {
   logLevel: LogLevel;
   water: WaterConfig | null;
   electricity: ElectricityConfig | null;
+  /** Path to an optional TLS/basic-auth config file. Null serves plain, unauthenticated HTTP. */
+  webConfigFile: string | null;
 }
 
 const MIN_POLL_MINUTES = 15;
@@ -49,6 +51,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const port = intOr(env.PORT, DEFAULT_PORT, 'PORT');
   const dataDir = env.DATA_DIR?.trim() || DEFAULT_DATA_DIR;
   const logLevel = asLogLevel(env.LOG_LEVEL);
+  const webConfigFile = env.WEB_CONFIG_FILE?.trim() || null;
 
   const water = isEnabled(env.WATER_ENABLED) ? loadWaterConfig(env) : null;
   const electricity = isEnabled(env.ELECTRICITY_ENABLED) ? loadElectricityConfig(env, dataDir) : null;
@@ -60,7 +63,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
 
-  return { port, dataDir, logLevel, water, electricity };
+  return { port, dataDir, logLevel, water, electricity, webConfigFile };
 }
 
 function loadWaterConfig(env: NodeJS.ProcessEnv): WaterConfig {
@@ -141,6 +144,6 @@ function positiveFloatOrNull(value: string | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function asLogLevel(value: string | undefined): LogLevel {
+export function asLogLevel(value: string | undefined): LogLevel {
   return value === 'debug' || value === 'warn' || value === 'error' ? value : 'info';
 }

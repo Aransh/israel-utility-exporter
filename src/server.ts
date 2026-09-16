@@ -1,11 +1,32 @@
-import { createServer, type Server } from 'node:http';
+import bcrypt from 'bcryptjs';
+import {
+  createServer as createHttpServer,
+  type IncomingMessage,
+  type Server as HttpServer,
+  type ServerResponse,
+} from 'node:http';
+import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https';
 
 import type { Logger } from './logger.js';
 import { registry } from './metrics.js';
+import type { WebConfig } from './web-config.js';
 
-export function startServer(port: number, log: Logger): Server {
-  const server = createServer((req, res) => {
+export function startServer(port: number, log: Logger, webConfig: WebConfig | null = null): HttpServer | HttpsServer {
+  const handler = (req: IncomingMessage, res: ServerResponse) => {
     const path = (req.url ?? '/').split('?')[0];
+
+    // Left unauthenticated so the Dockerfile HEALTHCHECK doesn't need credentials.
+    if (path === '/healthz') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('ok\n');
+      return;
+    }
+
+    if (webConfig?.basicAuthUsers && !isAuthorized(req.headers.authorization, webConfig.basicAuthUsers)) {
+      res.writeHead(401, { 'Content-Type': 'text/plain', 'WWW-Authenticate': 'Basic realm="israel-utility-exporter"' });
+      res.end('unauthorized\n');
+      return;
+    }
 
     if (path === '/metrics') {
       registry
@@ -22,12 +43,6 @@ export function startServer(port: number, log: Logger): Server {
       return;
     }
 
-    if (path === '/healthz') {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('ok\n');
-      return;
-    }
-
     if (path === '/') {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('israel-utility-exporter\n\nSee /metrics for Prometheus metrics, /healthz for a liveness check.\n');
@@ -36,11 +51,31 @@ export function startServer(port: number, log: Logger): Server {
 
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('not found\n');
-  });
+  };
+
+  const server = webConfig?.tls
+    ? createHttpsServer({ cert: webConfig.tls.cert, key: webConfig.tls.key }, handler)
+    : createHttpServer(handler);
 
   server.listen(port, () => {
-    log.info(`Listening on :${port} (/metrics, /healthz)`);
+    const features = [webConfig?.tls && 'tls', webConfig?.basicAuthUsers && 'basic-auth'].filter(Boolean).join(', ');
+    log.info(`Listening on :${port} (/metrics, /healthz)${features ? ` [${features}]` : ''}`);
   });
 
   return server;
+}
+
+function isAuthorized(header: string | undefined, users: Record<string, string>): boolean {
+  if (!header?.startsWith('Basic ')) {
+    return false;
+  }
+  const decoded = Buffer.from(header.slice('Basic '.length), 'base64').toString('utf8');
+  const sep = decoded.indexOf(':');
+  if (sep === -1) {
+    return false;
+  }
+  const user = decoded.slice(0, sep);
+  const password = decoded.slice(sep + 1);
+  const hash = users[user];
+  return hash !== undefined && bcrypt.compareSync(password, hash);
 }

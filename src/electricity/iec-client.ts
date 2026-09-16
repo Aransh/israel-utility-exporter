@@ -183,7 +183,11 @@ export class IecClient {
       _embedded?: { factors?: Array<{ id?: string; factorType?: string }> };
     };
     this.stateToken = authnData.stateToken;
-    const factor = authnData._embedded?.factors?.[0];
+    const factors = authnData._embedded?.factors ?? [];
+    this.log(
+      `Available factors: ${factors.map((f) => `${f.factorType ?? 'unknown'} (${f.id ?? 'no id'})`).join(', ') || 'none'}`,
+    );
+    const factor = factors[0];
     if (!factor?.id) {
       throw new IECLoginError(-1, 'No authentication factors found for this ID');
     }
@@ -201,7 +205,11 @@ export class IecClient {
     const otpData = (await otpResponse.json()) as {
       _embedded?: { factor?: { factorType?: string } };
     };
-    return otpData._embedded?.factor?.factorType ?? factor.factorType ?? 'unknown';
+    const verifiedFactorType = otpData._embedded?.factor?.factorType;
+    if (verifiedFactorType && factor.factorType && verifiedFactorType !== factor.factorType) {
+      this.log(`Factor type mismatch: selected "${factor.factorType}" but the verify response reports "${verifiedFactorType}"`);
+    }
+    return verifiedFactorType ?? factor.factorType ?? 'unknown';
   }
 
   /** Second login step: verifies the OTP code and completes the OAuth exchange. */

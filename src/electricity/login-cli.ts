@@ -15,6 +15,8 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 
+import { asLogLevel } from '../config.js';
+import { createLogger } from '../logger.js';
 import { IECLoginError, IecClient } from './iec-client.js';
 
 function parseArgs(argv: string[]): { id?: string; tokenFile?: string } {
@@ -45,7 +47,8 @@ async function main(): Promise<void> {
 
   const rl = createInterface({ input: stdin, output: stdout });
   try {
-    const client = new IecClient(id, { log: (msg) => console.log(msg) });
+    const log = createLogger(asLogLevel(process.env.LOG_LEVEL));
+    const client = new IecClient(id, { log: (msg) => log.debug(msg) });
     console.log(`Requesting an OTP for Israeli ID ${id}...`);
     const factorType = await client.loginWithId();
     const otp = (await rl.question(`Enter the OTP code sent via ${factorType}: `)).trim();

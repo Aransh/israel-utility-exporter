@@ -2,15 +2,12 @@ name: israel-utility-exporter
 
 services:
   israel-utility-exporter:
-    build: .
     image: aransh/israel-utility-exporter:latest
     restart: unless-stopped
     env_file:
       - .env
     volumes:
       - exporter-data:/data
-    ports:
-      - '9877:9877'
 
   prometheus:
     image: prom/prometheus:latest

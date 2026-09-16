@@ -4,6 +4,7 @@ import { createLogger } from './logger.js';
 import { startServer } from './server.js';
 import { resolveDataDir } from './state/paths.js';
 import { WaterCollector } from './water/collector.js';
+import { loadWebConfig, WebConfigError } from './web-config.js';
 
 async function main(): Promise<void> {
   let config;
@@ -20,6 +21,20 @@ async function main(): Promise<void> {
 
   const log = createLogger(config.logLevel);
   await resolveDataDir(config.dataDir);
+
+  let webConfig = null;
+  if (config.webConfigFile) {
+    try {
+      webConfig = loadWebConfig(config.webConfigFile);
+    } catch (error) {
+      if (error instanceof WebConfigError) {
+        console.error(`Configuration error: ${error.message}`);
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
+    }
+  }
 
   const collectors: Array<{ stop: () => void }> = [];
 
@@ -39,7 +54,7 @@ async function main(): Promise<void> {
     await electricity.start();
   }
 
-  const server = startServer(config.port, log);
+  const server = startServer(config.port, log, webConfig);
 
   const shutdown = (signal: string) => {
     log.info(`Received ${signal}, shutting down.`);
