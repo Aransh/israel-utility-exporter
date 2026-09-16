@@ -48,7 +48,10 @@ export function loadWebConfig(path: string): WebConfig {
   }
 
   let basicAuthUsers: WebConfig['basicAuthUsers'] = null;
-  if (data.basic_auth_users) {
+  if (data.basic_auth_users !== undefined) {
+    if (typeof data.basic_auth_users !== 'object' || data.basic_auth_users === null || Array.isArray(data.basic_auth_users)) {
+      throw new WebConfigError('basic_auth_users must be a mapping.');
+    }
     for (const [user, hash] of Object.entries(data.basic_auth_users)) {
       if (typeof hash !== 'string') {
         throw new WebConfigError(`basic_auth_users.${user} must be a bcrypt hash string.`);

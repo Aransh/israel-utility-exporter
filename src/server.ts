@@ -66,10 +66,10 @@ export function startServer(port: number, log: Logger, webConfig: WebConfig | nu
 }
 
 function isAuthorized(header: string | undefined, users: Record<string, string>): boolean {
-  if (!header?.startsWith('Basic ')) {
+  if (header?.slice(0, 6).toLowerCase() !== 'basic ') {
     return false;
   }
-  const decoded = Buffer.from(header.slice('Basic '.length), 'base64').toString('utf8');
+  const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
   const sep = decoded.indexOf(':');
   if (sep === -1) {
     return false;

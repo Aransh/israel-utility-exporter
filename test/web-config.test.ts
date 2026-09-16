@@ -57,6 +57,11 @@ test('rejects a non-string basic_auth_users hash', () => {
   assert.throws(() => loadWebConfig(configFile('basic_auth_users:\n  admin: 12345\n')), WebConfigError);
 });
 
+test('rejects a basic_auth_users value that is not a mapping', () => {
+  assert.throws(() => loadWebConfig(configFile('basic_auth_users: []\n')), WebConfigError);
+  assert.throws(() => loadWebConfig(configFile('basic_auth_users: "admin"\n')), WebConfigError);
+});
+
 test('rejects a YAML document that is not a mapping', () => {
   assert.throws(() => loadWebConfig(configFile('- just\n- a\n- list\n')), WebConfigError);
 });

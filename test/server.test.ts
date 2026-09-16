@@ -89,6 +89,12 @@ test('basic auth: /healthz stays open, /metrics and / require valid credentials'
 
     const rootAuthorized = await request(baseUrl, basicAuthHeader('admin', 'correct-password'));
     assert.equal(rootAuthorized.status, 200);
+
+    // HTTP auth schemes are case-insensitive (RFC 7235 section 2.1).
+    const lowercaseScheme = await request(`${baseUrl}/metrics`, {
+      authorization: `basic ${Buffer.from('admin:correct-password').toString('base64')}`,
+    });
+    assert.equal(lowercaseScheme.status, 200);
   });
 });
 
