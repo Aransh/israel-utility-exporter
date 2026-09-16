@@ -25,6 +25,11 @@ const GET_CONTRACTS_URL = `${IEC_API_BASE_URL}customer/contract/{bp_number}`;
 const GET_DEVICES_URL = `${IEC_API_BASE_URL}Device/{contract_id}`;
 const GET_REMOTE_READING_URL = `${IEC_API_BASE_URL}Consumption/RemoteReadingRange/{contract_id}`;
 
+// IEC registers some accounts' OTP factor as Okta type "email", but pointed
+// at this internal domain rather than a real inbox — it's IEC's own
+// email-to-SMS gateway, so the code actually arrives as a text message.
+const IEC_SMS_GATEWAY_EMAIL_DOMAIN = 'sns.iec.co.il';
+
 /** Token expires proactively refreshed once fewer than this many seconds remain. */
 const REFRESH_MARGIN_SECONDS = 300;
 
@@ -168,7 +173,12 @@ export class IecClient {
 
   // ------------------------------------------------------------ login (CLI only)
 
-  /** First login step: sends an OTP to the user's registered phone/email. Returns the factor type ("sms", "email", ...). */
+  /**
+   * First login step: sends an OTP to the user's registered phone/email.
+   * Returns the channel to tell the user ("sms", "email", ...) — normalized
+   * against IEC_SMS_GATEWAY_EMAIL_DOMAIN, since an Okta "email" factor there
+   * really means "sms" to a human.
+   */
   async loginWithId(): Promise<string> {
     const authnResponse = await fetch(`${IEC_OKTA_BASE_URL}/api/v1/authn`, {
       method: 'POST',
@@ -180,13 +190,10 @@ export class IecClient {
     }
     const authnData = (await authnResponse.json()) as {
       stateToken?: string;
-      _embedded?: { factors?: Array<{ id?: string; factorType?: string }> };
+      _embedded?: { factors?: Array<{ id?: string; factorType?: string; profile?: Record<string, unknown> }> };
     };
     this.stateToken = authnData.stateToken;
     const factors = authnData._embedded?.factors ?? [];
-    this.log(
-      `Available factors: ${factors.map((f) => `${f.factorType ?? 'unknown'} (${f.id ?? 'no id'})`).join(', ') || 'none'}`,
-    );
     const factor = factors[0];
     if (!factor?.id) {
       throw new IECLoginError(-1, 'No authentication factors found for this ID');
@@ -203,13 +210,17 @@ export class IecClient {
       throw new IECLoginError(otpResponse.status, `Failed to send OTP: ${otpResponse.statusText}. ${text.slice(0, 200)}`);
     }
     const otpData = (await otpResponse.json()) as {
-      _embedded?: { factor?: { factorType?: string } };
+      _embedded?: { factor?: { factorType?: string; profile?: Record<string, unknown> } };
     };
-    const verifiedFactorType = otpData._embedded?.factor?.factorType;
-    if (verifiedFactorType && factor.factorType && verifiedFactorType !== factor.factorType) {
-      this.log(`Factor type mismatch: selected "${factor.factorType}" but the verify response reports "${verifiedFactorType}"`);
+    const verifiedFactor = otpData._embedded?.factor;
+    const factorType = verifiedFactor?.factorType ?? factor.factorType ?? 'unknown';
+    const profile = verifiedFactor?.profile ?? factor.profile ?? {};
+    const destination = typeof profile.email === 'string' ? profile.email : typeof profile.phoneNumber === 'string' ? profile.phoneNumber : null;
+    if (factorType === 'email' && destination?.toLowerCase().endsWith(`@${IEC_SMS_GATEWAY_EMAIL_DOMAIN}`)) {
+      this.log(`Factor is Okta type "email" but the address (${destination}) is IEC's SMS gateway — reporting it as sms.`);
+      return 'sms';
     }
-    return verifiedFactorType ?? factor.factorType ?? 'unknown';
+    return factorType;
   }
 
   /** Second login step: verifies the OTP code and completes the OAuth exchange. */

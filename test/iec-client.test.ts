@@ -84,6 +84,49 @@ function makeFakeIec(state: FakeIecState) {
   };
 }
 
+interface FakeOktaFactor {
+  id: string;
+  factorType: string;
+  profile?: Record<string, unknown>;
+}
+
+function makeFakeOktaLogin(factors: FakeOktaFactor[]) {
+  return async (url: string, init: RequestInit = {}): Promise<Response> => {
+    const u = new URL(url);
+    assert.equal(init.method, 'POST', `expected a POST to ${u.pathname}`);
+    const body = JSON.parse((init.body as string | undefined) ?? '{}') as Record<string, unknown>;
+
+    if (u.pathname === '/api/v1/authn') {
+      assert.equal(typeof body.username, 'string', 'the authn request must send a username');
+      return json({ stateToken: 'state-token', _embedded: { factors } });
+    }
+    const verifyMatch = /^\/api\/v1\/authn\/factors\/(.+)\/verify$/.exec(u.pathname);
+    if (verifyMatch) {
+      assert.equal(body.stateToken, 'state-token', 'the verify request must send back the stateToken from the authn response');
+      const factor = factors.find((f) => f.id === verifyMatch[1]);
+      return json({ _embedded: { factor } });
+    }
+    return new Response('', { status: 404 });
+  };
+}
+
+test('loginWithId reports "sms" for a genuine sms factor', async () => {
+  globalThis.fetch = makeFakeOktaLogin([{ id: 'f1', factorType: 'sms', profile: { phoneNumber: '+972501234567' } }]) as typeof fetch;
+  assert.equal(await new IecClient(VALID_ID).loginWithId(), 'sms');
+});
+
+test('loginWithId reports a genuine external "email" factor as email', async () => {
+  globalThis.fetch = makeFakeOktaLogin([{ id: 'f1', factorType: 'email', profile: { email: 'user@example.com' } }]) as typeof fetch;
+  assert.equal(await new IecClient(VALID_ID).loginWithId(), 'email');
+});
+
+test('loginWithId normalizes an "email" factor pointed at IEC\'s SMS gateway to "sms"', async () => {
+  // IEC registers some accounts' OTP factor as Okta type "email" but pointed
+  // at their own email-to-SMS gateway — the code really arrives as a text.
+  globalThis.fetch = makeFakeOktaLogin([{ id: 'f1', factorType: 'email', profile: { email: 'M...h@sns.iec.co.il' } }]) as typeof fetch;
+  assert.equal(await new IecClient(VALID_ID).loginWithId(), 'sms');
+});
+
 test('loads a token from file, proactively refreshing when close to expiry', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'iec-'));
   const path = join(dir, 'token.json');

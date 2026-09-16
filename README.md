@@ -208,6 +208,13 @@ Namespace `israel_utility`. All gauges; a poll that fails or finds nothing new
 published simply leaves them at their last value (Prometheus keeps serving
 it), so a portal outage never shows up as a false zero.
 
+Follows Prometheus's official [metric naming](https://prometheus.io/docs/practices/naming/)
+and [exporter](https://prometheus.io/docs/instrumenting/writing_exporters/)
+conventions — base units, a `build_info` metric, gauges rather than counters
+for absolute readings from an external API — and CI runs `promtool check
+metrics` against a live `/metrics` response on every push to keep the
+exposition format itself verified by Prometheus's own tooling.
+
 **Water** (labels `meter_id`, `meter_serial`):
 
 | Metric | Meaning |

@@ -11,6 +11,23 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-16
+
+### Added
+
+- CI now runs `promtool check metrics` against a live `/metrics` response
+  (`scripts/check-metrics-format.mjs`) on every push, so the exposition
+  format is validated by Prometheus's own tooling instead of just asserted.
+  README's Metrics section notes this and the naming/exporter best practices
+  the metrics already followed.
+
+### Fixed
+
+- The electricity login CLI now reports "sms" instead of "email" when IEC's
+  registered OTP factor is Okta type "email" but points at IEC's own
+  internal email-to-SMS gateway (`sns.iec.co.il`) — the code always arrived
+  by text, the prompt just described it wrong.
+
 ## [0.2.1] - 2026-09-16
 
 ### Changed
@@ -79,7 +96,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Aransh/israel-utility-exporter/releases/tag/v0.1.0
