@@ -91,13 +91,18 @@ interface FakeOktaFactor {
 }
 
 function makeFakeOktaLogin(factors: FakeOktaFactor[]) {
-  return async (url: string): Promise<Response> => {
+  return async (url: string, init: RequestInit = {}): Promise<Response> => {
     const u = new URL(url);
+    assert.equal(init.method, 'POST', `expected a POST to ${u.pathname}`);
+    const body = JSON.parse((init.body as string | undefined) ?? '{}') as Record<string, unknown>;
+
     if (u.pathname === '/api/v1/authn') {
+      assert.equal(typeof body.username, 'string', 'the authn request must send a username');
       return json({ stateToken: 'state-token', _embedded: { factors } });
     }
     const verifyMatch = /^\/api\/v1\/authn\/factors\/(.+)\/verify$/.exec(u.pathname);
     if (verifyMatch) {
+      assert.equal(body.stateToken, 'state-token', 'the verify request must send back the stateToken from the authn response');
       const factor = factors.find((f) => f.id === verifyMatch[1]);
       return json({ _embedded: { factor } });
     }
