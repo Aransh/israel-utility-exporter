@@ -40,11 +40,11 @@
     "login:electricity": "node dist/electricity/login-cli.js"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
+    "@eslint/js": "^10.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.10.1",
-    "eslint": "^9.39.1",
+    "eslint": "^10.0.0",
     "rimraf": "^6.1.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
