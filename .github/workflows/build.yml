@@ -19,6 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test # lint + build + unit tests
+      - name: Validate /metrics against the Prometheus exposition format
+        run: node scripts/check-metrics-format.mjs | docker run --rm -i --entrypoint /bin/promtool prom/prometheus check metrics
 
   # Catches a broken Dockerfile (or a missing file it needs) on every push/PR,
   # without pushing anything. Shares a cache scope with docker-release.yml's

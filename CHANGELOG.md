@@ -13,6 +13,14 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [0.2.2] - 2026-09-16
 
+### Added
+
+- CI now runs `promtool check metrics` against a live `/metrics` response
+  (`scripts/check-metrics-format.mjs`) on every push, so the exposition
+  format is validated by Prometheus's own tooling instead of just asserted.
+  README's Metrics section notes this and the naming/exporter best practices
+  the metrics already followed.
+
 ### Fixed
 
 - The electricity login CLI now reports "sms" instead of "email" when IEC's
