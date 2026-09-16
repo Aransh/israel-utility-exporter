@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { RateLimitedError, RymProClient, UnauthorizedError, weekStart } from '../src/water/rympro-client.js';
+import { enumerateWeekStarts, RateLimitedError, RymProClient, sumWeek, UnauthorizedError, weekStart } from '../src/water/rympro-client.js';
 
 const METER_ID = 55123;
 const METER_SERIAL = '000811515025';
@@ -207,4 +207,56 @@ test('a 429 that never lets up gives up after the retry budget', async () => {
 
   const client = new RymProClient('aran@example.com', 'correct-horse', 'device-1');
   await assert.rejects(() => client.fetchAll(), RateLimitedError);
+});
+
+test('dailyConsumptionRange is public and fetches an arbitrary range, newest first, excluding unpublished days', async () => {
+  const state: FakePortalState = { loginCount: 0, dailyPublished: { 0: 0.5, 1: 0.6, 2: null }, rateLimit: null };
+  globalThis.fetch = makeFakePortal(state) as typeof fetch;
+
+  const client = new RymProClient('aran@example.com', 'correct-horse', 'device-1');
+  await client.login();
+  const rows = await client.dailyConsumptionRange(METER_ID, daysAgo(2), today());
+
+  assert.deepEqual(
+    rows.map((r) => r.date),
+    [today(), daysAgo(1)],
+  );
+});
+
+test('monthlyConsumption and listMeters are public and usable standalone, for the backfill CLI', async () => {
+  const state: FakePortalState = { loginCount: 0, dailyPublished: {}, rateLimit: null };
+  globalThis.fetch = makeFakePortal(state) as typeof fetch;
+
+  const client = new RymProClient('aran@example.com', 'correct-horse', 'device-1');
+  await client.login();
+
+  const meters = await client.listMeters();
+  assert.equal(meters[0]!.meterCount, METER_ID);
+
+  const monthly = await client.monthlyConsumption(METER_ID, today());
+  assert.equal(monthly, 14.2);
+});
+
+test('sumWeek sums only the days within the 7-day window starting at weekStartYmd', () => {
+  const days = [
+    { date: '2026-08-16', value: 1 },
+    { date: '2026-08-17', value: 2 },
+    { date: '2026-08-22', value: 3 }, // last day of the window (weekStart + 6)
+    { date: '2026-08-23', value: 100 }, // next week — must not leak in
+  ];
+  const { value, counted } = sumWeek(days, '2026-08-16');
+  assert.equal(value, 6);
+  assert.equal(counted, 3);
+});
+
+test('sumWeek returns null when no day in the window is published', () => {
+  assert.deepEqual(sumWeek([{ date: '2026-01-01', value: 5 }], '2026-02-01'), { value: null, counted: 0 });
+});
+
+test('enumerateWeekStarts lists every week window start between from and to', () => {
+  assert.deepEqual(enumerateWeekStarts('2026-08-01', '2026-08-20', 'sunday'), ['2026-07-26', '2026-08-02', '2026-08-09', '2026-08-16']);
+});
+
+test('enumerateWeekStarts for a rolling window starts exactly at `from`', () => {
+  assert.deepEqual(enumerateWeekStarts('2026-08-01', '2026-08-10', 'rolling'), ['2026-08-01', '2026-08-08']);
 });

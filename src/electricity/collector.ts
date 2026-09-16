@@ -2,11 +2,17 @@ import { blendedRateForDay, loadTariffSchedule, type TariffSchedule } from '../c
 import type { ElectricityConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { electricityGauges } from '../metrics.js';
+import { dateToEpochSeconds, parseYmdNoon } from '../time/day.js';
 import { type ElectricitySnapshot, IECError, IECLoginError, IecClient } from './iec-client.js';
 
 const TOKEN_NOT_FOUND_ADVICE =
   'No IEC token found. Run the one-time login: ' +
   '`docker run --rm -it -v <data-volume>:/data <image> node dist/electricity/login-cli.js --id <israeli-id>`.';
+
+const BACKFILL_HINT =
+  'Historical data from before this exporter was first deployed (or from any downtime) is not backfilled ' +
+  'automatically. If you have a Prometheus remote_write endpoint, run `npm run backfill` (or ' +
+  '`node dist/backfill-cli.js --help`) to fetch and push it. See the README\'s "Historical data backfill" section.';
 
 /**
  * Polls the IEC API on an interval and keeps the electricity Prometheus
@@ -34,6 +40,7 @@ export class ElectricityCollector {
   }
 
   async start(): Promise<void> {
+    this.log.info(BACKFILL_HINT);
     await this.poll();
   }
 
@@ -135,7 +142,7 @@ export class ElectricityCollector {
   /** ILS/kWh to price the given day at, or null if no pricing is configured. */
   private effectiveRate(dailyDateYmd: string): number | null {
     if (this.tariffSchedule) {
-      return blendedRateForDay(this.tariffSchedule, parseYmd(dailyDateYmd));
+      return blendedRateForDay(this.tariffSchedule, parseYmdNoon(dailyDateYmd));
     }
     return this.config.pricePerKwh;
   }
@@ -151,22 +158,6 @@ export class ElectricityCollector {
     }, this.config.pollIntervalMs);
     this.timer.unref?.();
   }
-}
-
-function parseYmd(ymd: string): Date {
-  const parts = ymd.split('-').map(Number);
-  const year = parts[0]!;
-  const month = parts[1]!;
-  const day = parts[2]!;
-  return new Date(year, month - 1, day, 12);
-}
-
-function dateToEpochSeconds(ymd: string): number {
-  const parts = ymd.split('-').map(Number);
-  const year = parts[0]!;
-  const month = parts[1]!;
-  const day = parts[2]!;
-  return new Date(year, month - 1, day).getTime() / 1000;
 }
 
 function message(error: unknown): string {

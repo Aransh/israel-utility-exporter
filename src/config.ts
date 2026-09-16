@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import type { WeeklyWindow } from './water/rympro-client.js';
 
 export class ConfigError extends Error {}
@@ -25,6 +27,26 @@ export interface ElectricityConfig {
   tariffScheduleFile: string | null;
 }
 
+export interface RemoteWriteTlsConfig {
+  /** Custom CA bundle (PEM contents), for a receiver with a private/self-signed certificate. */
+  ca?: string;
+  /** Client certificate (PEM contents), for mTLS. Set together with `key`. */
+  cert?: string;
+  /** Client private key (PEM contents), for mTLS. Set together with `cert`. */
+  key?: string;
+  insecureSkipVerify: boolean;
+}
+
+export interface RemoteWriteConfig {
+  /** Standard Prometheus remote_write endpoint URL, e.g. `http://prometheus:9090/api/v1/write`. */
+  url: string;
+  username?: string;
+  password?: string;
+  bearerToken?: string;
+  timeoutMs: number;
+  tls: RemoteWriteTlsConfig;
+}
+
 export interface AppConfig {
   port: number;
   dataDir: string;
@@ -33,6 +55,8 @@ export interface AppConfig {
   electricity: ElectricityConfig | null;
   /** Path to an optional TLS/basic-auth config file. Null serves plain, unauthenticated HTTP. */
   webConfigFile: string | null;
+  /** Set (via REMOTE_WRITE_URL) only when the backfill CLI is meant to push to a remote_write receiver. */
+  remoteWrite: RemoteWriteConfig | null;
 }
 
 const MIN_POLL_MINUTES = 15;
@@ -63,7 +87,58 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
 
-  return { port, dataDir, logLevel, water, electricity, webConfigFile };
+  return { port, dataDir, logLevel, water, electricity, webConfigFile, remoteWrite: loadRemoteWriteConfig(env) };
+}
+
+/**
+ * `REMOTE_WRITE_URL`'s presence is what enables the backfill CLI's write
+ * step — there is no separate `REMOTE_WRITE_ENABLED` flag. Mirrors the
+ * options a Prometheus `remote_write:` config block itself supports
+ * (basic_auth, bearer_token, tls_config), since that's what any compliant
+ * remote_write receiver expects.
+ */
+function loadRemoteWriteConfig(env: NodeJS.ProcessEnv): RemoteWriteConfig | null {
+  const url = env.REMOTE_WRITE_URL?.trim();
+  if (!url) {
+    return null;
+  }
+
+  const username = env.REMOTE_WRITE_USERNAME?.trim() || undefined;
+  const password = env.REMOTE_WRITE_PASSWORD || undefined;
+  if (Boolean(username) !== Boolean(password)) {
+    throw new ConfigError('REMOTE_WRITE_USERNAME and REMOTE_WRITE_PASSWORD must both be set, or neither.');
+  }
+  const bearerToken = env.REMOTE_WRITE_BEARER_TOKEN?.trim() || undefined;
+  if (bearerToken && (username || password)) {
+    throw new ConfigError('Set either REMOTE_WRITE_BEARER_TOKEN or REMOTE_WRITE_USERNAME/REMOTE_WRITE_PASSWORD, not both.');
+  }
+
+  const caFile = env.REMOTE_WRITE_TLS_CA_FILE?.trim() || null;
+  const certFile = env.REMOTE_WRITE_TLS_CERT_FILE?.trim() || null;
+  const keyFile = env.REMOTE_WRITE_TLS_KEY_FILE?.trim() || null;
+  if (Boolean(certFile) !== Boolean(keyFile)) {
+    throw new ConfigError('REMOTE_WRITE_TLS_CERT_FILE and REMOTE_WRITE_TLS_KEY_FILE must both be set, or neither.');
+  }
+
+  let ca: string | undefined;
+  let cert: string | undefined;
+  let key: string | undefined;
+  try {
+    if (caFile) ca = readFileSync(caFile, 'utf8');
+    if (certFile) cert = readFileSync(certFile, 'utf8');
+    if (keyFile) key = readFileSync(keyFile, 'utf8');
+  } catch (error) {
+    throw new ConfigError(`Could not read a REMOTE_WRITE_TLS_* file: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  return {
+    url,
+    username,
+    password,
+    bearerToken,
+    timeoutMs: intOr(env.REMOTE_WRITE_TIMEOUT_MS, 30_000, 'REMOTE_WRITE_TIMEOUT_MS'),
+    tls: { ca, cert, key, insecureSkipVerify: isEnabled(env.REMOTE_WRITE_TLS_INSECURE_SKIP_VERIFY) },
+  };
 }
 
 function loadWaterConfig(env: NodeJS.ProcessEnv): WaterConfig {

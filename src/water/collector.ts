@@ -5,6 +5,7 @@ import type { WaterConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { waterGauges } from '../metrics.js';
 import { createWriteQueue, readJsonFile, writeJsonFileAtomic } from '../state/atomic-file.js';
+import { dateToEpochSeconds } from '../time/day.js';
 import {
   InvalidCredentialsError,
   type MeterSnapshot,
@@ -17,6 +18,11 @@ interface PersistedWaterState {
   deviceId: string;
   token?: string;
 }
+
+const BACKFILL_HINT =
+  'Historical data from before this exporter was first deployed (or from any downtime) is not backfilled ' +
+  'automatically. If you have a Prometheus remote_write endpoint, run `npm run backfill` (or ' +
+  '`node dist/backfill-cli.js --help`) to fetch and push it. See the README\'s "Historical data backfill" section.';
 
 /**
  * Polls the Read Your Meter Pro portal on an interval and keeps the water
@@ -45,6 +51,9 @@ export class WaterCollector {
 
   async start(): Promise<void> {
     const loaded = await readJsonFile<PersistedWaterState>(this.statePath);
+    if (!loaded) {
+      this.log.info(BACKFILL_HINT);
+    }
     this.state = loaded?.deviceId ? loaded : { deviceId: randomUUID() };
     this.persist();
 
@@ -174,14 +183,6 @@ export class WaterCollector {
       }
     });
   }
-}
-
-function dateToEpochSeconds(ymd: string): number {
-  const parts = ymd.split('-').map(Number);
-  const year = parts[0]!;
-  const month = parts[1]!;
-  const day = parts[2]!;
-  return new Date(year, month - 1, day).getTime() / 1000;
 }
 
 function message(error: unknown): string {

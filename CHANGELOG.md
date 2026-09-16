@@ -11,6 +11,27 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-17
+
+### Added
+
+- A `backfill` CLI (`npm run backfill` / `node dist/backfill-cli.js`) that
+  fetches historical daily/weekly/monthly consumption from the IEC and RYM
+  Pro APIs and pushes it to a `REMOTE_WRITE_URL` via the standard Prometheus
+  remote_write protocol (protobuf + Snappy), so it works with any compliant
+  receiver (Prometheus with `--web.enable-remote-write-receiver`, Thanos,
+  Cortex, Mimir, or any other remote_write-compatible TSDB). Supports
+  `--dry-run`, HTTP Basic/Bearer auth, and custom CA/client-cert/skip-verify
+  TLS options. See the README's "Historical data backfill" section.
+- Both collectors now log a one-time hint about the backfill CLI on a fresh
+  start, so operators discover it without having to read the README first.
+
+### Changed
+
+- `dateToEpochSeconds` (used for both `*_covers_timestamp_seconds` gauges)
+  is now a single shared implementation (`src/time/day.ts`) instead of two
+  independently duplicated copies in the water and electricity collectors.
+
 ## [0.2.2] - 2026-09-16
 
 ### Added
@@ -96,7 +117,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.1.0...v0.2.0

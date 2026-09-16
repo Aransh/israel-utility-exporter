@@ -27,12 +27,27 @@ services:
       # - ELECTRICITY_TARIFF_MODE=flat
       # - ELECTRICITY_PRICE_PER_KWH=
       # - ELECTRICITY_TARIFF_SCHEDULE_FILE=/data/tariff-schedule.json
+
+      # --- Historical data backfill (only used by `backfill-cli.js`, not the running exporter) ---
+      # - REMOTE_WRITE_URL=http://prometheus:9090/api/v1/write
+      # - REMOTE_WRITE_USERNAME=
+      # - REMOTE_WRITE_PASSWORD=
+      # - REMOTE_WRITE_BEARER_TOKEN=
+      # - REMOTE_WRITE_TLS_CA_FILE=/data/remote-write-ca.pem
+      # - REMOTE_WRITE_TLS_INSECURE_SKIP_VERIFY=false
     volumes:
       - exporter-data:/data
+    # Backfill is a one-off command, not a persistent service — run it against
+    # this same container/volume, e.g.:
+    #   docker compose run --rm israel-utility-exporter node dist/backfill-cli.js --service all --days 90 --dry-run
 
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
+    # To backfill into this Prometheus directly (rather than an external
+    # remote_write-compatible receiver), add `--web.enable-remote-write-receiver`
+    # to its command and point REMOTE_WRITE_URL above at
+    # http://prometheus:9090/api/v1/write.
     volumes:
       - ./prometheus/prometheus.yml.example:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro

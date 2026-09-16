@@ -128,6 +128,13 @@ empty `/metrics` silently.
 | `ELECTRICITY_TARIFF_MODE` | `flat` | `flat` \| `schedule`. See [Cost estimation](#cost-estimation). |
 | `ELECTRICITY_PRICE_PER_KWH` | — | ILS. Used when `flat`. |
 | `ELECTRICITY_TARIFF_SCHEDULE_FILE` | — | Path to a JSON schedule file. Used when `schedule`. See `tariff-schedule.example.json`. |
+| `REMOTE_WRITE_URL` | — | A Prometheus remote_write endpoint. Only used by the [backfill CLI](#historical-data-backfill), not the running exporter. |
+| `REMOTE_WRITE_USERNAME` / `REMOTE_WRITE_PASSWORD` | — | HTTP Basic auth for `REMOTE_WRITE_URL`. Set together. |
+| `REMOTE_WRITE_BEARER_TOKEN` | — | Bearer token auth for `REMOTE_WRITE_URL`. Mutually exclusive with Basic auth. |
+| `REMOTE_WRITE_TIMEOUT_MS` | `30000` | Per-request timeout for the remote_write POST. |
+| `REMOTE_WRITE_TLS_CA_FILE` | — | Path to a custom CA bundle (PEM), for a receiver with a private/self-signed certificate. |
+| `REMOTE_WRITE_TLS_CERT_FILE` / `REMOTE_WRITE_TLS_KEY_FILE` | — | Client certificate/key (PEM) for mTLS. Set together. |
+| `REMOTE_WRITE_TLS_INSECURE_SKIP_VERIFY` | `false` | Disables certificate verification. Testing/self-signed use only — never for production. |
 
 ## TLS & Basic Auth
 
@@ -285,6 +292,54 @@ Plus `israel_utility_exporter_build_info{version="..."}`.
   crash-looping the whole container.
 - **Everything else (rate limits, transient errors) holds the last known
   reading** and keeps retrying on the next poll, rather than showing a gap.
+
+## Historical data backfill
+
+The exporter only ever surfaces the newest published day/week/month (see
+above) — data from before either collector's live lookback window, or from
+before the exporter was first deployed, is never backfilled automatically.
+Run the included CLI once (or whenever there's a gap to fill) to push
+historical data directly into your TSDB:
+
+```bash
+node dist/backfill-cli.js --service all --days 90
+node dist/backfill-cli.js --service electricity --from 2026-01-01 --to 2026-03-01
+node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, no write
+```
+
+- Only **raw numbers the utility APIs report directly** are backfilled: daily
+  consumption for both utilities, weekly consumption for water (electricity
+  has no weekly metric), and monthly consumption for both. No cost/rate
+  estimates are backfilled — those are computed locally from today's tariff
+  config and would misrepresent a historical day priced under a different
+  rate.
+- The range you can actually backfill is **limited to whatever the underlying
+  portal API itself still retains** — there's no way to go back further than
+  that, regardless of `--days`/`--from`.
+- Electricity requires a token already saved by `npm run login:electricity` —
+  IEC's OTP login can't be automated here.
+- Samples are timestamped at **local midnight** of the day they cover, the
+  same semantics `*_covers_timestamp_seconds` already uses, so a backfilled
+  point lines up with what a live scrape would have reported that day. Water's
+  weekly total has no live `covers_timestamp` gauge to imitate, so its
+  backfilled sample is timestamped at the **end of that week's bucket**
+  instead; a week whose 7-day window extends past the requested `--to` is
+  skipped rather than backfilled with a partial total that — unlike the live
+  gauge — never gets corrected later.
+- Writing uses the standard Prometheus **remote_write** protocol (protobuf +
+  Snappy) — the same wire format Prometheus itself sends — so
+  `REMOTE_WRITE_URL` can point at any compliant receiver (Prometheus with
+  `--web.enable-remote-write-receiver`, Thanos, Cortex, Mimir, or any other
+  remote_write-compatible TSDB). remote_write is naturally idempotent —
+  writing the same series/timestamp/value again is a safe no-op — so it's
+  safe to re-run the CLI over an overlapping range; a differing value at an
+  already-written timestamp is simply rejected by the receiver.
+- Without `REMOTE_WRITE_URL` set, only `--dry-run` works (it prints what would
+  be sent, without requiring one).
+
+See the [Configuration](#configuration) table for `REMOTE_WRITE_*` variables,
+including TLS options (custom CA, client cert, skip-verify) for a receiver on
+a private or self-signed certificate.
 
 ## Development
 
