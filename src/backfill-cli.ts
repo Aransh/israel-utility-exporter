@@ -22,7 +22,7 @@ import { IecClient, ReadingResolution } from './electricity/iec-client.js';
 import { createLogger, type Logger } from './logger.js';
 import { remoteWrite, type RemoteWriteSettings } from './remote-write/client.js';
 import { buildTimeSeries, type SamplePoint } from './remote-write/series-builder.js';
-import { dateToEpochSeconds, enumerateMonthStarts, isoDate, shiftDays } from './time/day.js';
+import { dateToEpochSeconds, enumerateMonthStarts, isoDate, parseYmdNoon, shiftDays } from './time/day.js';
 import { enumerateWeekStarts, RymProClient, sumWeek } from './water/rympro-client.js';
 
 const CHUNK_SIZE = 500;
@@ -55,29 +55,39 @@ export function parseArgs(argv: string[]): CliArgs {
   let days: number | undefined;
   let dryRun = false;
 
+  const requireValue = (flag: string, index: number): string => {
+    const value = argv[index];
+    if (value === undefined) {
+      throw new Error(`${flag} requires a value.`);
+    }
+    return value;
+  };
+
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--service' && argv[i + 1]) {
-      const value = argv[i + 1];
+    if (arg === '--service') {
+      const value = requireValue('--service', i + 1);
       if (value !== 'water' && value !== 'electricity' && value !== 'all') {
         throw new Error(`--service must be "water", "electricity", or "all", got "${value}".`);
       }
       service = value;
       i += 1;
-    } else if (arg === '--from' && argv[i + 1]) {
-      from = argv[i + 1];
+    } else if (arg === '--from') {
+      from = requireValue('--from', i + 1);
       i += 1;
-    } else if (arg === '--to' && argv[i + 1]) {
-      to = argv[i + 1];
+    } else if (arg === '--to') {
+      to = requireValue('--to', i + 1);
       i += 1;
-    } else if (arg === '--days' && argv[i + 1]) {
-      days = Number(argv[i + 1]);
+    } else if (arg === '--days') {
+      days = Number(requireValue('--days', i + 1));
       i += 1;
     } else if (arg === '--dry-run') {
       dryRun = true;
     } else if (arg === '--help' || arg === '-h') {
       printUsage();
       process.exit(0);
+    } else {
+      throw new Error(`Unrecognized argument: "${arg}".`);
     }
   }
 
@@ -87,22 +97,28 @@ export function parseArgs(argv: string[]): CliArgs {
   if (days === undefined && (from === undefined || to === undefined)) {
     throw new Error('Specify either --days N or both --from and --to — there is no default range.');
   }
-  if (days !== undefined && (!Number.isFinite(days) || days <= 0)) {
-    throw new Error('--days must be a positive number.');
+  if (days !== undefined && (!Number.isInteger(days) || days <= 0)) {
+    throw new Error('--days must be a positive integer.');
   }
 
   return { service: service ?? 'all', from, to, days, dryRun };
 }
 
+/** True only for a real calendar date in `YYYY-MM-DD` form — rejects overflow like `2026-02-31`. */
+function isValidYmd(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && isoDate(parseYmdNoon(value)) === value;
+}
+
 export function resolveRange(args: CliArgs): { from: string; to: string } {
   if (args.days !== undefined) {
     const to = isoDate(new Date());
-    return { from: shiftDays(to, -args.days), to };
+    // `--days N` means N calendar days ending today, inclusive — N-1 back from today.
+    return { from: shiftDays(to, -(args.days - 1)), to };
   }
   const from = args.from!;
   const to = args.to!;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    throw new Error('--from/--to must be in YYYY-MM-DD format.');
+  if (!isValidYmd(from) || !isValidYmd(to)) {
+    throw new Error('--from/--to must be real calendar dates in YYYY-MM-DD format.');
   }
   if (from > to) {
     throw new Error('--from must not be after --to.');
@@ -110,7 +126,7 @@ export function resolveRange(args: CliArgs): { from: string; to: string } {
   return { from, to };
 }
 
-async function collectWater(config: WaterConfig, from: string, to: string, log: Logger): Promise<SamplePoint[]> {
+export async function collectWater(config: WaterConfig, from: string, to: string, log: Logger): Promise<SamplePoint[]> {
   const client = new RymProClient(config.email, config.password, randomUUID(), {
     weeklyWindow: config.weeklyWindow,
     onRetry: (message) => log.debug(`Water backfill: ${message}`),
@@ -142,7 +158,11 @@ async function collectWater(config: WaterConfig, from: string, to: string, log: 
     // total that — unlike the live gauge — never gets corrected later.
     for (const weekStartYmd of enumerateWeekStarts(from, to, config.weeklyWindow)) {
       const weekEnd = shiftDays(weekStartYmd, WEEK_LENGTH_DAYS - 1);
-      if (weekEnd > to) {
+      // A fixed sunday/monday window can start before `from` (it snaps to the
+      // calendar week containing `from`, not `from` itself) — `daily` was
+      // only fetched from `from` onward, so that first bucket would otherwise
+      // look like a complete week while actually missing its leading days.
+      if (weekStartYmd < from || weekEnd > to) {
         continue;
       }
       const { value, counted } = sumWeek(daily, weekStartYmd);
