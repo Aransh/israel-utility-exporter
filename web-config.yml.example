@@ -1,0 +1,18 @@
+# Copy to web-config.yml, fill in what applies, and point WEB_CONFIG_FILE at
+# it. Both sections are optional and independent — set either, both, or
+# neither. Restart the exporter after changing this file or the cert/key it
+# points to.
+
+# Serves /metrics and / over HTTPS instead of plain HTTP. /healthz is always
+# served unauthenticated (and over the same scheme) so the Dockerfile
+# HEALTHCHECK doesn't need credentials.
+# tls_server_config:
+#   cert_file: /data/tls/fullchain.pem
+#   key_file: /data/tls/privkey.pem
+
+# Requires HTTP Basic Auth on /metrics and /. Values are bcrypt hashes, not
+# plaintext passwords. Generate one with:
+#   htpasswd -nBC 10 "" | tr -d ':\n'
+# (paste the password when prompted; the first line's hash is the output).
+# basic_auth_users:
+#   admin: $2y$10$replace-with-a-real-bcrypt-hash

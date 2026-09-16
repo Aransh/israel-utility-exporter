@@ -11,6 +11,28 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-16
+
+### Added
+
+- Optional TLS and HTTP Basic Auth for the exporter's own HTTP server,
+  configured via a `WEB_CONFIG_FILE` YAML file (`tls_server_config`,
+  `basic_auth_users`, bcrypt-hashed) — see `web-config.yml.example`. `/healthz`
+  stays unauthenticated over the same scheme so the container `HEALTHCHECK`
+  never needs credentials.
+- `LOG_LEVEL=debug` diagnostics for the electricity login CLI: the full list
+  of OTP factors Okta offers, and a warning if the factor it actually
+  verified disagrees with the one requested.
+
+### Changed
+
+- `docker-compose.yml`'s exporter service no longer publishes its port to the
+  host — Prometheus already reaches it over the internal Compose network —
+  and only pulls the published `image:` instead of also building from source.
+- The Dockerfile's `HEALTHCHECK` now runs `wget --spider` (falling back to
+  HTTPS when TLS is configured) instead of a custom Node script, and `tini`
+  is now PID 1 for proper signal forwarding and zombie reaping.
+
 ## [0.1.0] - 2026-09-16
 
 ### Added
@@ -38,5 +60,6 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Aransh/israel-utility-exporter/releases/tag/v0.1.0

@@ -87,7 +87,11 @@ docker run --rm -it -v israel-utility-exporter-data:/data \
 ```
 
 This prompts for the OTP code, then writes a refresh-capable token into the
-same volume the main container reads from. Set:
+same volume the main container reads from. The prompt names the channel Okta
+reports (`sms`, `email`, ...) for the factor it actually requested — if that
+ever disagrees with where the code really arrived, rerun with
+`LOG_LEVEL=debug` for a line listing every available factor plus a warning if
+Okta's own responses disagree with each other. Set:
 
 ```
 ELECTRICITY_ENABLED=true
@@ -111,6 +115,7 @@ empty `/metrics` silently.
 | `PORT` | `9877` | HTTP port for `/metrics` and `/healthz`. |
 | `DATA_DIR` | `/data` | Where session/token state is persisted. Mount a volume here. |
 | `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
+| `WEB_CONFIG_FILE` | — | Path to a YAML file enabling TLS and/or Basic Auth. See [TLS & Basic Auth](#tls--basic-auth) below. |
 | `WATER_ENABLED` | `false` | Set `true` to enable the water collector. |
 | `WATER_EMAIL` / `WATER_PASSWORD` | — | RYM Pro portal credentials. Required if `WATER_ENABLED`. |
 | `WATER_POLL_INTERVAL_MINUTES` | `90` | Floored at 15 — the meter itself updates at most hourly, and polling faster risks the portal's rate limit. |
@@ -123,6 +128,29 @@ empty `/metrics` silently.
 | `ELECTRICITY_TARIFF_MODE` | `flat` | `flat` \| `schedule`. See [Cost estimation](#cost-estimation). |
 | `ELECTRICITY_PRICE_PER_KWH` | — | ILS. Used when `flat`. |
 | `ELECTRICITY_TARIFF_SCHEDULE_FILE` | — | Path to a JSON schedule file. Used when `schedule`. See `tariff-schedule.example.json`. |
+
+## TLS & Basic Auth
+
+By default the exporter serves plain, unauthenticated HTTP — fine on a
+private network, but this data is personal, so set `WEB_CONFIG_FILE` if
+`/metrics` is reachable beyond that. Copy `web-config.yml.example` to
+`web-config.yml`, fill in what applies, and point `WEB_CONFIG_FILE` at it
+(e.g. `/data/web-config.yml`):
+
+```yaml
+tls_server_config:
+  cert_file: /data/tls/fullchain.pem
+  key_file: /data/tls/privkey.pem
+basic_auth_users:
+  admin: $2y$10$replace-with-a-real-bcrypt-hash
+```
+
+Both sections are optional and independent. Passwords are bcrypt hashes, not
+plaintext — generate one with `htpasswd -nBC 10 "" | tr -d ':\n'`. `/healthz`
+is always served unauthenticated (over the same scheme) so the container's
+own `HEALTHCHECK` doesn't need credentials; `/metrics` and `/` are protected
+when configured. The exporter reads the config file and cert/key once at
+startup — restart it after rotating certs or changing the file.
 
 ## Cost estimation
 
