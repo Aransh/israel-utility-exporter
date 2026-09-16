@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcryptjs": "^3.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.10.1",
     "eslint": "^10.0.0",
@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@prometheus-io/client": "^0.16.1",
-    "bcryptjs": "^2.4.3",
+    "bcryptjs": "^3.0.0",
     "js-yaml": "^5.0.0"
   }
 }
