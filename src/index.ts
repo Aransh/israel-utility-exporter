@@ -36,6 +36,10 @@ async function main(): Promise<void> {
     }
   }
 
+  // Started before the collectors' first poll (which can take a while — a
+  // slow or rate-limited portal shouldn't delay /healthz and /metrics coming up).
+  const server = startServer(config.port, log, webConfig);
+
   const collectors: Array<{ stop: () => void }> = [];
 
   if (config.water) {
@@ -44,17 +48,19 @@ async function main(): Promise<void> {
     );
     const water = new WaterCollector(config.water, config.dataDir, log);
     collectors.push(water);
-    await water.start();
+    water.start().catch((error: unknown) => {
+      log.error(`Water: failed to start: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 
   if (config.electricity) {
     log.info(`Electricity collector enabled (poll every ${Math.round(config.electricity.pollIntervalMs / 60_000)}m).`);
     const electricity = new ElectricityCollector(config.electricity, log);
     collectors.push(electricity);
-    await electricity.start();
+    electricity.start().catch((error: unknown) => {
+      log.error(`Electricity: failed to start: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
-
-  const server = startServer(config.port, log, webConfig);
 
   const shutdown = (signal: string) => {
     log.info(`Received ${signal}, shutting down.`);

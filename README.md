@@ -32,8 +32,8 @@ electricity, or both.
 ```bash
 git clone https://github.com/Aransh/israel-utility-exporter.git
 cd israel-utility-exporter
-cp .env.example .env
-# edit .env: enable water and/or electricity, fill in credentials
+# edit docker-compose.yml: under the israel-utility-exporter service's
+# `environment:`, enable water and/or electricity and fill in credentials
 docker compose up -d
 ```
 
@@ -147,10 +147,14 @@ basic_auth_users:
 
 Both sections are optional and independent. Passwords are bcrypt hashes, not
 plaintext — generate one with `htpasswd -nBC 10 "" | tr -d ':\n'`. `/healthz`
-is always served unauthenticated (over the same scheme) so the container's
-own `HEALTHCHECK` doesn't need credentials; `/metrics` and `/` are protected
-when configured. The exporter reads the config file and cert/key once at
-startup — restart it after rotating certs or changing the file.
+is always served unauthenticated, but still over whatever scheme `/metrics`
+uses; `/metrics` and `/` are protected when configured. The exporter reads
+the config file and cert/key once at startup — restart it after rotating
+certs or changing the file.
+
+Enabling TLS means the image's own `HEALTHCHECK` (plain HTTP) no longer
+matches — override it in your own compose file or `docker run`, e.g.
+`wget --quiet --tries=1 --spider --no-check-certificate https://localhost:$PORT/healthz`.
 
 ## Cost estimation
 
