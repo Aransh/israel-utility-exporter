@@ -81,10 +81,16 @@ export class ElectricityCollector {
         this.log.warn(`Electricity: could not persist refreshed token: ${message(error)}`);
       });
       if (!this.state?.hasRecordedData) {
-        this.state = { hasRecordedData: true };
-        await writeJsonFileAtomic(this.statePath, this.state).catch((error: unknown) => {
+        // Only flip the in-memory flag once the write actually lands — if it
+        // fails, `this.state` must stay falsy so the next successful poll
+        // retries the write, instead of the flag getting stuck true in
+        // memory while every restart keeps seeing an unpersisted state file.
+        try {
+          await writeJsonFileAtomic(this.statePath, { hasRecordedData: true });
+          this.state = { hasRecordedData: true };
+        } catch (error) {
           this.log.warn(`Electricity: could not persist collector state: ${message(error)}`);
-        });
+        }
       }
 
       electricityGauges.scrapeSuccess.set(1);

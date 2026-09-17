@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -103,4 +104,37 @@ test('keeps showing the hint across restarts if no poll has ever succeeded', asy
   await collectorB.start();
   collectorB.stop();
   assert.ok(second.lines.some((line) => line.includes('First run detected')), 'must still show the hint since no poll has ever succeeded');
+});
+
+test('retries persisting the flag on a later successful poll if an earlier write failed', async () => {
+  globalThis.fetch = fakeIec() as typeof fetch;
+
+  const workDir = mkdtempSync(join(tmpdir(), 'electricity-collector-'));
+  const tokenFile = join(workDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+
+  // A plain file where the collector's data directory should be — its
+  // internal `mkdir(dirname(statePath), { recursive: true })` fails against
+  // this, simulating a transient disk error on the first poll's state write.
+  const brokenDataDir = join(workDir, 'not-a-directory');
+  writeFileSync(brokenDataDir, 'x');
+
+  const captured = captureLog();
+  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 30, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+  const collector = new ElectricityCollector(config, brokenDataDir, captured.log);
+
+  await collector.start(); // fetches fine, but the state write fails
+  assert.ok(captured.lines.some((line) => line.includes('First run detected')));
+
+  // The disk becomes writable again before the next poll.
+  unlinkSync(brokenDataDir);
+  mkdirSync(brokenDataDir);
+  await new Promise((resolve) => setTimeout(resolve, 200)); // let the scheduled next poll run
+  collector.stop();
+
+  const persisted = JSON.parse(await readFile(join(brokenDataDir, 'electricity-state.json'), 'utf8')) as { hasRecordedData?: boolean };
+  assert.equal(persisted.hasRecordedData, true, 'a later successful poll must retry the write instead of leaving it stuck unpersisted');
 });

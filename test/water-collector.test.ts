@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -79,4 +80,33 @@ test('keeps showing the hint across restarts if no poll has ever succeeded', asy
   await collectorB.start();
   collectorB.stop();
   assert.ok(second.lines.some((line) => line.includes('First run detected')), 'must still show the hint since no poll has ever succeeded');
+});
+
+test('retries persisting the flag on a later successful poll if an earlier write failed', async () => {
+  globalThis.fetch = fakePortal() as typeof fetch;
+
+  const workDir = mkdtempSync(join(tmpdir(), 'water-collector-'));
+  // A plain file where the collector's data directory should be — its
+  // internal `mkdir(dirname(statePath), { recursive: true })` fails against
+  // this, simulating a transient disk error on the first poll's state write.
+  const brokenDataDir = join(workDir, 'not-a-directory');
+  writeFileSync(brokenDataDir, 'x');
+
+  const captured = captureLog();
+  const collector = new WaterCollector({ ...makeConfig(), pollIntervalMs: 30 }, brokenDataDir, captured.log);
+
+  await collector.start(); // fetches fine, but every state write fails (including the initial device-id write)
+  assert.ok(captured.lines.some((line) => line.includes('First run detected')));
+
+  // The disk becomes writable again before the next poll.
+  unlinkSync(brokenDataDir);
+  mkdirSync(brokenDataDir);
+  // The water client paces its requests 250ms apart, and a poll makes
+  // several of them — give the scheduled next poll enough real time to
+  // actually finish, not just start.
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  collector.stop();
+
+  const persisted = JSON.parse(await readFile(join(brokenDataDir, 'water-state.json'), 'utf8')) as { hasRecordedData?: boolean };
+  assert.equal(persisted.hasRecordedData, true, 'a later successful poll must retry the write instead of leaving it stuck unpersisted');
 });

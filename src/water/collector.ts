@@ -99,12 +99,22 @@ export class WaterCollector {
         this.record(snapshot);
       }
       if (!this.state?.hasRecordedData) {
-        this.state = { ...this.state!, hasRecordedData: true };
-        this.persist();
-        // Unlike a token refresh, this flag must actually be on disk before a
-        // restart can rely on it — otherwise a restart shortly after the
-        // first successful poll could still see the pre-flip state and show
-        // the backfill hint again.
+        // Only flip the in-memory flag once the write actually lands — if it
+        // fails, `this.state` must stay falsy so the next successful poll
+        // retries the write, instead of the flag getting stuck true in
+        // memory while every restart keeps seeing an unpersisted state file.
+        // Goes through the write queue (not a bare write) so it stays
+        // ordered with any concurrent token write from `onToken`; flushed
+        // before returning so a restart right after this poll sees it.
+        const candidate = { ...this.state!, hasRecordedData: true };
+        this.writeQueue.enqueue(async () => {
+          try {
+            await writeJsonFileAtomic(this.statePath, candidate);
+            this.state = candidate;
+          } catch (error) {
+            this.log.warn(`Water: could not persist state: ${message(error)}`);
+          }
+        });
         await this.writeQueue.flush();
       }
       waterGauges.scrapeSuccess.set(1);
