@@ -192,8 +192,13 @@ export class RymProClient {
     }
   }
 
+  /** Every meter on the account, as reported by the portal's own meter list. */
+  async listMeters(): Promise<MeterRead[]> {
+    return this.get<MeterRead[]>(`${CONSUMPTION_URL}/last-read`);
+  }
+
   private async fetchAllOnce(): Promise<MeterSnapshot[]> {
-    const meters = await this.get<MeterRead[]>(`${CONSUMPTION_URL}/last-read`);
+    const meters = await this.listMeters();
     const today = localDate();
 
     const snapshots: MeterSnapshot[] = [];
@@ -225,17 +230,13 @@ export class RymProClient {
   }
 
   /**
-   * Every day in the lookback window the portal has actually published,
-   * newest first. Empty when it has published nothing.
+   * Every day the portal has published in `[from, to]`, newest first. Empty
+   * when it has published nothing in that range. Used both by the live
+   * lookback (via `publishedDays`) and by the backfill CLI with a much wider
+   * range.
    */
-  private async publishedDays(
-    meterCount: number,
-    today: string,
-  ): Promise<Array<{ value: number; date: string }>> {
-    const from = shiftDays(today, -DAILY_LOOKBACK_DAYS);
-    const rows = await this.get<ConsumptionRow[]>(
-      `${CONSUMPTION_URL}/daily/${meterCount}/${from}/${today}`,
-    );
+  async dailyConsumptionRange(meterCount: number, from: string, to: string): Promise<Array<{ value: number; date: string }>> {
+    const rows = await this.get<ConsumptionRow[]>(`${CONSUMPTION_URL}/daily/${meterCount}/${from}/${to}`);
     if (!Array.isArray(rows)) {
       return [];
     }
@@ -243,6 +244,11 @@ export class RymProClient {
       .map((row) => ({ value: toNumber(row?.cons), date: rowDate(row) }))
       .filter((row): row is { value: number; date: string } => row.value !== null && row.date !== null)
       .sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  /** Every day in the live lookback window the portal has actually published, newest first. */
+  private publishedDays(meterCount: number, today: string): Promise<Array<{ value: number; date: string }>> {
+    return this.dailyConsumptionRange(meterCount, shiftDays(today, -DAILY_LOOKBACK_DAYS), today);
   }
 
   /** Consumption over the configured weekly window, summed from the already-fetched daily window. */
@@ -254,28 +260,20 @@ export class RymProClient {
       this.weeklyWindow === 'rolling'
         ? shiftDays(today, -(ROLLING_WEEK_DAYS - 1))
         : weekStart(today, this.weeklyWindow === 'monday' ? 1 : 0);
-    const inWeek = published.filter((day) => day.date >= start && day.date <= today);
     const elapsed = daysBetween(start, today) + 1;
-
-    if (inWeek.length === 0) {
-      return { value: null, start, counted: 0, elapsed };
-    }
-    return {
-      value: inWeek.reduce((sum, day) => sum + day.value, 0),
-      start,
-      counted: inWeek.length,
-      elapsed,
-    };
+    const { value, counted } = sumWeek(published, start);
+    return { value, start, counted, elapsed };
   }
 
   /**
    * Consumption for the calendar month containing `date`. The endpoint keys
-   * off the month the range falls in, so a one-day range is all it needs.
+   * off the month the range falls in, so a one-day range is all it needs —
+   * call this once per calendar month when backfilling a wide range, rather
+   * than assuming a multi-month `from`/`to` returns more than one month
+   * (that behavior is unconfirmed against the live portal).
    */
-  private async monthlyConsumption(meterCount: number, date: string): Promise<number | null> {
-    const rows = await this.get<ConsumptionRow[]>(
-      `${CONSUMPTION_URL}/monthly/${meterCount}/${date}/${date}`,
-    );
+  async monthlyConsumption(meterCount: number, date: string): Promise<number | null> {
+    const rows = await this.get<ConsumptionRow[]>(`${CONSUMPTION_URL}/monthly/${meterCount}/${date}/${date}`);
     if (!Array.isArray(rows) || rows.length === 0) {
       return null;
     }
@@ -465,6 +463,31 @@ function noon(date: string): Date {
 export function weekStart(date: string, startsOn: 0 | 1): string {
   const offset = (noon(date).getDay() - startsOn + 7) % 7;
   return shiftDays(date, -offset);
+}
+
+/** Sums the given days that fall within the 7-day window starting at `weekStartYmd`. */
+export function sumWeek(days: Array<{ value: number; date: string }>, weekStartYmd: string): { value: number | null; counted: number } {
+  const weekEnd = shiftDays(weekStartYmd, ROLLING_WEEK_DAYS - 1);
+  const inWeek = days.filter((day) => day.date >= weekStartYmd && day.date <= weekEnd);
+  if (inWeek.length === 0) {
+    return { value: null, counted: 0 };
+  }
+  return { value: inWeek.reduce((sum, day) => sum + day.value, 0), counted: inWeek.length };
+}
+
+/**
+ * Every week-window start (per `window`) between `from` and `to`, inclusive.
+ * Used by the backfill CLI to bucket a wide daily range the same way the
+ * live gauge buckets its own lookback window.
+ */
+export function enumerateWeekStarts(from: string, to: string, window: WeeklyWindow): string[] {
+  const starts: string[] = [];
+  let cursor = window === 'rolling' ? from : weekStart(from, window === 'monday' ? 1 : 0);
+  while (cursor <= to) {
+    starts.push(cursor);
+    cursor = shiftDays(cursor, ROLLING_WEEK_DAYS);
+  }
+  return starts;
 }
 
 function daysBetween(from: string, to: string): number {
