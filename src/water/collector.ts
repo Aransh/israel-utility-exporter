@@ -17,12 +17,18 @@ import {
 interface PersistedWaterState {
   deviceId: string;
   token?: string;
+  /**
+   * Set once this collector has ever completed a successful poll. Lets the
+   * backfill hint show only while there truly is no data yet, not on every
+   * restart — including one that just happens to have no prior state file
+   * for another reason (e.g. a wiped `token`).
+   */
+  hasRecordedData?: boolean;
 }
 
 const BACKFILL_HINT =
-  'Historical data from before this exporter was first deployed (or from any downtime) is not backfilled ' +
-  'automatically. If you have a Prometheus remote_write endpoint, run `npm run backfill` (or ' +
-  '`node dist/backfill-cli.js --help`) to fetch and push it. See the README\'s "Historical data backfill" section.';
+  'First run detected — no data yet, collection starts from now. To backfill historical data, see the ' +
+  'README\'s "Historical data backfill" section.';
 
 /**
  * Polls the Read Your Meter Pro portal on an interval and keeps the water
@@ -51,7 +57,7 @@ export class WaterCollector {
 
   async start(): Promise<void> {
     const loaded = await readJsonFile<PersistedWaterState>(this.statePath);
-    if (!loaded) {
+    if (!loaded?.hasRecordedData) {
       this.log.info(BACKFILL_HINT);
     }
     this.state = loaded?.deviceId ? loaded : { deviceId: randomUUID() };
@@ -91,6 +97,25 @@ export class WaterCollector {
       const snapshots = await this.client.fetchAll();
       for (const snapshot of snapshots) {
         this.record(snapshot);
+      }
+      if (!this.state?.hasRecordedData) {
+        // Only flip the in-memory flag once the write actually lands — if it
+        // fails, `this.state` must stay falsy so the next successful poll
+        // retries the write, instead of the flag getting stuck true in
+        // memory while every restart keeps seeing an unpersisted state file.
+        // Goes through the write queue (not a bare write) so it stays
+        // ordered with any concurrent token write from `onToken`; flushed
+        // before returning so a restart right after this poll sees it.
+        const candidate = { ...this.state!, hasRecordedData: true };
+        this.writeQueue.enqueue(async () => {
+          try {
+            await writeJsonFileAtomic(this.statePath, candidate);
+            this.state = candidate;
+          } catch (error) {
+            this.log.warn(`Water: could not persist state: ${message(error)}`);
+          }
+        });
+        await this.writeQueue.flush();
       }
       waterGauges.scrapeSuccess.set(1);
       waterGauges.scrapeLastSuccessTimestampSeconds.set(Date.now() / 1000);
