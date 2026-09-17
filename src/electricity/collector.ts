@@ -1,7 +1,10 @@
+import { join } from 'node:path';
+
 import { blendedRateForDay, loadTariffSchedule, type TariffSchedule } from '../cost/tariff.js';
 import type { ElectricityConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { electricityGauges } from '../metrics.js';
+import { readJsonFile, writeJsonFileAtomic } from '../state/atomic-file.js';
 import { dateToEpochSeconds, parseYmdNoon } from '../time/day.js';
 import { type ElectricitySnapshot, IECError, IECLoginError, IecClient } from './iec-client.js';
 
@@ -10,9 +13,13 @@ const TOKEN_NOT_FOUND_ADVICE =
   '`docker run --rm -it -v <data-volume>:/data <image> node dist/electricity/login-cli.js --id <israeli-id>`.';
 
 const BACKFILL_HINT =
-  'Historical data from before this exporter was first deployed (or from any downtime) is not backfilled ' +
-  'automatically. If you have a Prometheus remote_write endpoint, run `npm run backfill` (or ' +
-  '`node dist/backfill-cli.js --help`) to fetch and push it. See the README\'s "Historical data backfill" section.';
+  'First run detected — no data yet, collection starts from now. To backfill historical data, see the ' +
+  'README\'s "Historical data backfill" section.';
+
+interface PersistedElectricityState {
+  /** Set once this collector has ever completed a successful poll — shows the backfill hint only while there truly is no data yet. */
+  hasRecordedData?: boolean;
+}
 
 /**
  * Polls the IEC API on an interval and keeps the electricity Prometheus
@@ -27,11 +34,15 @@ export class ElectricityCollector {
   private stopped = false;
   private consecutiveFailures = 0;
   private tariffSchedule: TariffSchedule | null = null;
+  private state: PersistedElectricityState | null = null;
+  private readonly statePath: string;
 
   constructor(
     private readonly config: ElectricityConfig,
+    dataDir: string,
     private readonly log: Logger,
   ) {
+    this.statePath = join(dataDir, 'electricity-state.json');
     if (config.tariffMode === 'schedule' && config.tariffScheduleFile) {
       // Loaded once at startup and validated eagerly: a bad schedule file
       // should fail the exporter at boot, not silently stop pricing later.
@@ -40,7 +51,10 @@ export class ElectricityCollector {
   }
 
   async start(): Promise<void> {
-    this.log.info(BACKFILL_HINT);
+    this.state = await readJsonFile<PersistedElectricityState>(this.statePath);
+    if (!this.state?.hasRecordedData) {
+      this.log.info(BACKFILL_HINT);
+    }
     await this.poll();
   }
 
@@ -66,6 +80,12 @@ export class ElectricityCollector {
       await client.saveTokenToFile(this.config.tokenFile).catch((error: unknown) => {
         this.log.warn(`Electricity: could not persist refreshed token: ${message(error)}`);
       });
+      if (!this.state?.hasRecordedData) {
+        this.state = { hasRecordedData: true };
+        await writeJsonFileAtomic(this.statePath, this.state).catch((error: unknown) => {
+          this.log.warn(`Electricity: could not persist collector state: ${message(error)}`);
+        });
+      }
 
       electricityGauges.scrapeSuccess.set(1);
       electricityGauges.scrapeLastSuccessTimestampSeconds.set(Date.now() / 1000);

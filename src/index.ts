@@ -72,7 +72,7 @@ async function main(): Promise<void> {
 
     if (config.electricity) {
       log.info(`Electricity collector enabled (poll every ${Math.round(config.electricity.pollIntervalMs / 60_000)}m).`);
-      const electricity = new ElectricityCollector(config.electricity, log);
+      const electricity = new ElectricityCollector(config.electricity, config.dataDir, log);
       collectors.push(electricity);
       electricity.start().catch((error: unknown) => {
         fail(`Electricity: failed to start: ${error instanceof Error ? error.message : String(error)}`);

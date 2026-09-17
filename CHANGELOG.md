@@ -11,6 +11,16 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-18
+
+### Fixed
+
+- The backfill hint added in 0.3.0 now only logs on a genuine first run —
+  when a collector starts up and sees it has never recorded any data yet
+  (tracked per-collector in a small persisted state file) — instead of on
+  every single startup. Its wording is also much shorter, and no longer
+  suggests two redundant ways to run the same command.
+
 ## [0.3.0] - 2026-09-17
 
 ### Added
@@ -117,7 +127,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.0...v0.2.1
