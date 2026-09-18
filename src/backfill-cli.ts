@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { type AppConfig, type ElectricityConfig, loadConfig, type WaterConfig } from './config.js';
-import { DAILY_LOOKBACK_DAYS, IecClient, ReadingResolution } from './electricity/iec-client.js';
+import { IecClient, ReadingResolution } from './electricity/iec-client.js';
 import { createLogger, type Logger } from './logger.js';
 import { remoteWrite, type RemoteWriteSettings } from './remote-write/client.js';
 import { buildTimeSeries, type SamplePoint } from './remote-write/series-builder.js';
@@ -206,25 +206,39 @@ export async function collectElectricity(config: ElectricityConfig, from: string
   }
   const labels = { contract_id: contract.contractId };
 
-  // IEC's RemoteReadingRange doesn't reliably return one row per calendar
-  // day for a wide `fromDate` — observed in practice returning many rows
-  // all dated to `fromDate` itself instead of spanning the requested range.
-  // The one window size confirmed to work is the live collector's own
-  // DAILY_LOOKBACK_DAYS, so fetch in chunks of that size rather than one
-  // wide call, same conservatism already applied to MONTHLY below.
+  // DAILY resolution does not return a range at all — `fromDate` selects a
+  // single calendar day and the response is that day's 15-minute-interval
+  // sub-readings (confirmed against the live API: startDate == endDate ==
+  // fromDate, numberOfPeriodAggregated: 1). MONTHLY resolution, however,
+  // already returns one period per calendar day within the month alongside
+  // the month's own total — verified to match a same-day DAILY call's
+  // totalForPeriod exactly — so a single MONTHLY call per month (which we
+  // need anyway for the monthly figure) gives us real daily data for free,
+  // with no separate DAILY calls needed.
   const dailyByDate = new Map<string, number>();
-  for (let chunkStart = from; chunkStart <= to; chunkStart = shiftDays(chunkStart, DAILY_LOOKBACK_DAYS)) {
-    const daily = await client.getConsumption(contract.contractId, ReadingResolution.DAILY, chunkStart);
-    for (const period of daily.periods) {
-      const date = period.interval.slice(0, 10);
+  const points: SamplePoint[] = [];
+  for (const monthStart of enumerateMonthStarts(from, to)) {
+    const monthly = await client.getConsumption(contract.contractId, ReadingResolution.MONTHLY, monthStart);
+
+    for (const period of monthly.periods) {
+      // `interval` is a true UTC timestamp (e.g. "...T21:00:00+00:00"); in a
+      // timezone ahead of UTC (Israel included) naively slicing the string
+      // misattributes any entry landing in the last hours of the UTC day to
+      // the wrong local calendar date. Parsing it and reading local getters
+      // (via `isoDate`) gets the actual local day right.
+      const date = isoDate(new Date(period.interval));
       if (date < from || date > to) {
         continue;
       }
       dailyByDate.set(date, period.consumption);
     }
+
+    if (monthly.totalForPeriod !== null) {
+      const timestampMs = dateToEpochSeconds(monthStart) * 1000;
+      points.push({ metric: 'israel_utility_electricity_consumption_monthly_kwh', labels, timestampMs, value: monthly.totalForPeriod });
+    }
   }
 
-  const points: SamplePoint[] = [];
   for (const [date, consumption] of dailyByDate) {
     const timestampMs = dateToEpochSeconds(date) * 1000;
     points.push({ metric: 'israel_utility_electricity_consumption_daily_kwh', labels, timestampMs, value: consumption });
@@ -234,19 +248,6 @@ export async function collectElectricity(config: ElectricityConfig, from: string
       timestampMs,
       value: timestampMs / 1000,
     });
-  }
-
-  // Called once per calendar month rather than trusting a wide `fromDate` to
-  // return every month in one response — that behavior is unconfirmed
-  // against the live IEC API (today's live collector only ever requests the
-  // current month).
-  for (const monthStart of enumerateMonthStarts(from, to)) {
-    const monthly = await client.getConsumption(contract.contractId, ReadingResolution.MONTHLY, monthStart);
-    if (monthly.totalForPeriod === null) {
-      continue;
-    }
-    const timestampMs = dateToEpochSeconds(monthStart) * 1000;
-    points.push({ metric: 'israel_utility_electricity_consumption_monthly_kwh', labels, timestampMs, value: monthly.totalForPeriod });
   }
 
   return points;

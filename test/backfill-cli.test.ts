@@ -164,11 +164,16 @@ function fakeIdToken(expiresInSeconds: number): string {
 }
 
 /**
- * Reproduces the real IEC quirk found in production: a `RemoteReadingRange`
- * DAILY call doesn't span from `fromDate` through today — every returned
- * period is dated to `fromDate` itself, regardless of how far back it is.
+ * Reproduces the real IEC behavior confirmed against a live account:
+ * MONTHLY resolution returns one period per calendar day within the month
+ * (verified to match what a same-day DAILY call reports as its
+ * totalForPeriod) alongside the month's own totalForPeriod — so one
+ * MONTHLY call per month gives real daily data too, no separate DAILY call
+ * needed. `interval` is true UTC; entries near UTC midnight are given in a
+ * form that only resolves to the correct local day once parsed as a real
+ * instant (not string-sliced).
  */
-function fakeIecDailyCollapsedToFromDate() {
+function fakeIecMonthlyWithDailyBreakdown(dailyByLocalDate: Record<string, number>, monthTotal: number) {
   return async (url: string, init: RequestInit = {}): Promise<Response> => {
     const u = new URL(url);
     if (u.hostname !== 'iecapi.iec.co.il') {
@@ -184,21 +189,24 @@ function fakeIecDailyCollapsedToFromDate() {
       return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
     }
     if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
-      const body = JSON.parse(init.body as string) as { resolution: number; fromDate: string };
-      if (body.resolution !== ReadingResolution.DAILY) {
+      const body = JSON.parse(init.body as string) as { resolution: number };
+      if (body.resolution !== ReadingResolution.MONTHLY) {
         return json({ meterList: [{ totalConsumptionForPeriod: 0 }] });
       }
       return json({
         meterList: [
           {
-            // Several sub-day readings, all dated to `fromDate` — never the
-            // days in between `fromDate` and today, no matter how far back
-            // `fromDate` is.
-            periodConsumptions: [
-              { interval: `${body.fromDate}T00:00:00+00:00`, consumption: 1 },
-              { interval: `${body.fromDate}T00:20:00+00:00`, consumption: 2 },
-              { interval: `${body.fromDate}T00:40:00+00:00`, consumption: 3 },
-            ],
+            totalConsumptionForPeriod: monthTotal,
+            // Each entry's `interval` is the true UTC instant of that day's
+            // local midnight (computed independently of the test runner's
+            // own timezone, via the same local->epoch conversion production
+            // code uses) — in any timezone ahead of UTC this lands on the
+            // *previous* UTC calendar date, exactly the shape that broke
+            // naive `interval.slice(0, 10)`.
+            periodConsumptions: Object.entries(dailyByLocalDate).map(([localDate, consumption]) => ({
+              interval: new Date(dateToEpochSeconds(localDate) * 1000).toISOString(),
+              consumption,
+            })),
           },
         ],
       });
@@ -207,8 +215,11 @@ function fakeIecDailyCollapsedToFromDate() {
   };
 }
 
-test('collectElectricity chunks the daily fetch in DAILY_LOOKBACK_DAYS windows instead of trusting one wide call to span the whole range', async () => {
-  globalThis.fetch = fakeIecDailyCollapsedToFromDate() as typeof fetch;
+test('collectElectricity gets real daily data from the MONTHLY call, not a separate DAILY call', async () => {
+  globalThis.fetch = fakeIecMonthlyWithDailyBreakdown(
+    { '2026-01-01': 1, '2026-01-02': 2, '2026-01-03': 3 },
+    6,
+  ) as typeof fetch;
 
   const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
   const tokenFile = join(dataDir, 'iec-token.json');
@@ -218,14 +229,21 @@ test('collectElectricity chunks the daily fetch in DAILY_LOOKBACK_DAYS windows i
   );
   const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
 
-  // 21 days = exactly 3 chunks of DAILY_LOOKBACK_DAYS (7) — a single wide
-  // call would only ever recover one day's worth of data against the fake
-  // above; chunking must recover one day per chunk instead.
-  const points = await collectElectricity(config, '2026-01-01', '2026-01-21', SILENT_LOG);
+  const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG);
 
   const dailyPoints = points.filter((p) => p.metric === 'israel_utility_electricity_consumption_daily_kwh');
-  const timestamps = dailyPoints.map((p) => p.timestampMs).sort((a, b) => a - b);
-  assert.deepEqual(timestamps, ['2026-01-01', '2026-01-08', '2026-01-15'].map((d) => dateToEpochSeconds(d) * 1000));
-  // Only the last of the same-day duplicate periods survives (deduped by date).
-  assert.ok(dailyPoints.every((p) => p.value === 3));
+  const byTimestamp = new Map(dailyPoints.map((p) => [p.timestampMs, p.value]));
+  assert.deepEqual(
+    byTimestamp,
+    new Map([
+      [dateToEpochSeconds('2026-01-01') * 1000, 1],
+      [dateToEpochSeconds('2026-01-02') * 1000, 2],
+      [dateToEpochSeconds('2026-01-03') * 1000, 3],
+    ]),
+  );
+
+  const monthlyPoints = points.filter((p) => p.metric === 'israel_utility_electricity_consumption_monthly_kwh');
+  assert.equal(monthlyPoints.length, 1);
+  assert.equal(monthlyPoints[0]!.value, 6);
+  assert.equal(monthlyPoints[0]!.timestampMs, dateToEpochSeconds('2026-01-01') * 1000);
 });
