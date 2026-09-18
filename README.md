@@ -123,8 +123,8 @@ empty `/metrics` silently.
 | `WATER_TARIFF_MODE` | `flat` | `flat` \| `tiered`. See [Cost estimation](#cost-estimation). |
 | `WATER_PRICE_PER_CUBIC_METER` | — | ILS. Used when `flat`; also the tiered mode's below-allowance rate. If set (flat) or fully configured (tiered), enables `israel_utility_water_cost_estimate_ils`. |
 | `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER` | — | ILS. Used when `tiered` — the rate above the household's allowance. |
-| `WATER_TARIFF_HOUSEHOLD_SIZE` | — | Positive integer. Used when `tiered` — number of people registered on the water account. |
-| `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` | — | m3. Used when `tiered` — subsidized m3/person/month before the excess rate applies. |
+| `WATER_TARIFF_HOUSEHOLD_SIZE` | — | Positive integer. Used when `tiered` — number of people registered on the water account. Treated as at least 2 — see [Cost estimation](#cost-estimation). |
+| `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` | — | m3/person/**month**. Used when `tiered`. Published tariffs often quote this per *two months* instead — see [Cost estimation](#cost-estimation) before copying a number straight off a tariff page. |
 | `ELECTRICITY_ENABLED` | `false` | Set `true` to enable the electricity collector. |
 | `ELECTRICITY_ID` | — | Your 9-digit Israeli ID. Required if `ELECTRICITY_ENABLED`. |
 | `ELECTRICITY_TOKEN_FILE` | `$DATA_DIR/iec-token.json` | Written by the login CLI; loaded/refreshed by the collector. |
@@ -221,15 +221,34 @@ you supply the price yourself:
   - `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` — m3/person/month before
     the excess rate kicks in.
 
-  This month's threshold is `WATER_TARIFF_HOUSEHOLD_SIZE x
-  WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS`; consumption up to it is
-  priced at the normal rate, the rest at the excess rate.
+  This month's threshold is `max(WATER_TARIFF_HOUSEHOLD_SIZE, 2) x
+  WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` — Israeli water tariffs
+  guarantee every housing unit at least a 2-person allowance regardless of
+  how few people are registered there, so a solo resident isn't shortchanged
+  (this floor is fixed by law, not a separate variable). Consumption up to
+  the threshold is priced at the normal rate, the rest at the excess rate.
   `israel_utility_water_tariff_threshold_cubic_meters` and
   `israel_utility_water_effective_rate_ils_per_cubic_meter` expose the
   threshold and the resulting blended ILS/m3 rate, so — as with electricity's
-  schedule mode — neither is hidden inside the cost figure. **Get the actual
-  numbers from your own water corporation's published tariff and account
-  details** — they change periodically and this exporter doesn't fetch them.
+  schedule mode — neither is hidden inside the cost figure.
+
+  **Get the actual numbers from your own water corporation's published
+  tariff and account details** — they change periodically and this exporter
+  doesn't fetch them. Watch the units: `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS`
+  is m3/person **per month** (matching `israel_utility_water_consumption_monthly_liters`),
+  but published tariffs often quote it per **two months** instead — e.g.
+  Yuval Lim's page says "עד 7 מ"ק לנפש **לחודשיים**" (up to 7 m3/person per
+  two months) right next to "3.5 מ״ק **לחודש**" (3.5 m3/month) for the same
+  allowance; use the monthly figure (`3.5`), not the bimonthly one (`7`), or
+  you'll double the real threshold. A worked example matching that same
+  page: `WATER_PRICE_PER_CUBIC_METER=8.51`,
+  `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER=15.62`,
+  `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS=3.5`. Also note this is
+  still a calendar-month approximation of a tariff actually billed over a
+  2-month cycle — usage concentrated near a bimonthly cycle boundary (e.g.
+  low one calendar month, high the next) can price slightly differently
+  than the real bill, which averages allowance use across the full 2-month
+  period rather than resetting it every calendar month.
 
 ## Metrics
 

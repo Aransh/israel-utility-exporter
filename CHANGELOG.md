@@ -24,7 +24,13 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   Adds `israel_utility_water_tariff_threshold_cubic_meters` and
   `israel_utility_water_effective_rate_ils_per_cubic_meter`, and two new
   Grafana panels, so the computed threshold and blended rate are visible
-  rather than hidden inside the cost figure.
+  rather than hidden inside the cost figure. The threshold is
+  `max(WATER_TARIFF_HOUSEHOLD_SIZE, 2) x WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS`
+  — Israeli water tariffs guarantee every housing unit at least a 2-person
+  allowance regardless of how few people are registered there (verified
+  against Yuval Lim's published tariff, where the "not less than 14
+  m3/2 months per housing unit" floor is exactly 2x the 3.5 m3/month
+  per-person allowance).
 - `israel_utility_water_cost_estimate_forecast_ils`: the portal's own
   month-end consumption forecast, priced the same way (flat or tiered) as
   the existing month-to-date cost estimate, plus a matching Grafana panel.
