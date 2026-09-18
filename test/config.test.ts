@@ -69,6 +69,91 @@ test('REMOTE_WRITE_USERNAME and REMOTE_WRITE_PASSWORD must both be set or neithe
   );
 });
 
+test('WATER_TARIFF_MODE defaults to flat, with tariffTiers null', () => {
+  const config = loadConfig(baseEnv());
+  assert.equal(config.water?.tariffMode, 'flat');
+  assert.equal(config.water?.tariffTiers, null);
+});
+
+test('WATER_TARIFF_MODE=tiered parses a full set of tiers', () => {
+  const config = loadConfig(
+    baseEnv({
+      WATER_TARIFF_MODE: 'tiered',
+      WATER_PRICE_PER_CUBIC_METER: '10',
+      WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER: '20',
+      WATER_TARIFF_HOUSEHOLD_SIZE: '4',
+      WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS: '3.5',
+    }),
+  );
+  assert.deepEqual(config.water?.tariffTiers, {
+    normalRatePerCubicMeter: 10,
+    excessRatePerCubicMeter: 20,
+    householdSize: 4,
+    allowancePerPersonCubicMeters: 3.5,
+  });
+});
+
+test('WATER_TARIFF_MODE=tiered without WATER_PRICE_PER_CUBIC_METER is rejected', () => {
+  assert.throws(
+    () =>
+      loadConfig(
+        baseEnv({
+          WATER_TARIFF_MODE: 'tiered',
+          WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER: '20',
+          WATER_TARIFF_HOUSEHOLD_SIZE: '4',
+          WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS: '3.5',
+        }),
+      ),
+    ConfigError,
+  );
+});
+
+test('WATER_TARIFF_MODE=tiered without WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER is rejected', () => {
+  assert.throws(
+    () =>
+      loadConfig(
+        baseEnv({
+          WATER_TARIFF_MODE: 'tiered',
+          WATER_PRICE_PER_CUBIC_METER: '10',
+          WATER_TARIFF_HOUSEHOLD_SIZE: '4',
+          WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS: '3.5',
+        }),
+      ),
+    ConfigError,
+  );
+});
+
+test('WATER_TARIFF_MODE=tiered with a non-integer WATER_TARIFF_HOUSEHOLD_SIZE is rejected', () => {
+  assert.throws(
+    () =>
+      loadConfig(
+        baseEnv({
+          WATER_TARIFF_MODE: 'tiered',
+          WATER_PRICE_PER_CUBIC_METER: '10',
+          WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER: '20',
+          WATER_TARIFF_HOUSEHOLD_SIZE: '4.5',
+          WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS: '3.5',
+        }),
+      ),
+    ConfigError,
+  );
+});
+
+test('WATER_TARIFF_MODE=tiered without WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS is rejected', () => {
+  assert.throws(
+    () =>
+      loadConfig(
+        baseEnv({
+          WATER_TARIFF_MODE: 'tiered',
+          WATER_PRICE_PER_CUBIC_METER: '10',
+          WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER: '20',
+          WATER_TARIFF_HOUSEHOLD_SIZE: '4',
+        }),
+      ),
+    ConfigError,
+  );
+});
+
 test('REMOTE_WRITE_BEARER_TOKEN is mutually exclusive with basic auth', () => {
   assert.throws(
     () =>

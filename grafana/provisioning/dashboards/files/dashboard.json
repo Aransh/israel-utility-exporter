@@ -72,17 +72,73 @@
       "id": 4,
       "type": "stat",
       "title": "Water Cost Estimate (Month to Date)",
-      "description": "Only populated when WATER_PRICE_PER_CUBIC_METER is set.",
+      "description": "Only populated when WATER_PRICE_PER_CUBIC_METER is set (flat mode) or WATER_TARIFF_MODE=tiered is fully configured.",
       "gridPos": { "x": 16, "y": 1, "w": 8, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
+      "targets": [{ "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }],
       "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Water Effective Rate (Tiered Mode)",
+      "description": "This month-to-date consumption's blended ILS/m3 rate, given WATER_TARIFF_HOUSEHOLD_SIZE and the allowance. Only populated in WATER_TARIFF_MODE=tiered.",
+      "gridPos": { "x": 0, "y": 7, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "israel_utility_water_effective_rate_ils_per_cubic_meter", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 3, "noValue": "flat mode / not configured" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Water Tariff Threshold (Tiered Mode, Month to Date)",
+      "description": "WATER_TARIFF_HOUSEHOLD_SIZE x WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS. Consumption above this is priced at WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER. Only populated in WATER_TARIFF_MODE=tiered.",
+      "gridPos": { "x": 8, "y": 7, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "israel_utility_water_tariff_threshold_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "m3", "decimals": 2, "noValue": "flat mode / not configured" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Water Forecast Cost Estimate (Month End)",
+      "description": "Estimated cost of the portal's own month-end forecast, priced the same way as the month-to-date estimate (flat or tiered).",
+      "gridPos": { "x": 16, "y": 7, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "israel_utility_water_cost_estimate_forecast_ils", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
         "justifyMode": "auto"
       }
     },
@@ -91,7 +147,7 @@
       "type": "timeseries",
       "title": "Daily Water Consumption",
       "description": "Not always today's figure — the portal publishes a day's reading with a lag; check *_covers_timestamp_seconds if a value looks stale.",
-      "gridPos": { "x": 0, "y": 7, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_consumption_daily_liters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "litre", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } }, "overrides": [] },
@@ -101,7 +157,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Weekly / Monthly Water Consumption vs Forecast",
-      "gridPos": { "x": 12, "y": 7, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         { "expr": "israel_utility_water_consumption_weekly_liters", "legendFormat": "Weekly (meter {{meter_id}})", "refId": "A" },
@@ -116,21 +172,21 @@
       "type": "timeseries",
       "title": "Cumulative Water Meter Reading",
       "description": "The long-term trend the Home app can't show you. A flattening slope is lower usage; a step change worth investigating is usually a leak.",
-      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_meter_reading_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "m3" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     },
 
-    { "id": 20, "type": "row", "title": "Electricity", "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    { "id": 20, "type": "row", "title": "Electricity", "gridPos": { "x": 0, "y": 29, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
 
     {
       "id": 21,
       "type": "stat",
       "title": "Electricity Meter Reading",
       "description": "Cumulative meter reading. IEC only updates this every 1-2 days regardless of poll frequency.",
-      "gridPos": { "x": 0, "y": 24, "w": 6, "h": 6 },
+      "gridPos": { "x": 0, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_meter_reading_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "kwatth", "decimals": 1 }, "overrides": [] },
@@ -148,7 +204,7 @@
       "type": "stat",
       "title": "Electricity Collector Health",
       "description": "1 = last poll of the IEC API succeeded. If this is stuck at 0, check the exporter logs — likely the token needs a fresh login.",
-      "gridPos": { "x": 6, "y": 24, "w": 6, "h": 6 },
+      "gridPos": { "x": 6, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_scrape_success", "refId": "A" }],
       "fieldConfig": {
@@ -174,16 +230,16 @@
       "type": "stat",
       "title": "Electricity Cost Estimate (Newest Day)",
       "description": "Only populated when ELECTRICITY_PRICE_PER_KWH or a tariff schedule is configured. In schedule mode this is a duration-weighted estimate, not a bill reconstruction — see README.",
-      "gridPos": { "x": 12, "y": 24, "w": 6, "h": 6 },
+      "gridPos": { "x": 12, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_electricity_cost_estimate_ils", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
+      "targets": [{ "expr": "israel_utility_electricity_cost_estimate_ils", "legendFormat": "Contract {{contract_id}}", "refId": "A", "instant": true }],
       "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "justifyMode": "auto"
       }
     },
@@ -192,9 +248,9 @@
       "type": "stat",
       "title": "Effective Rate (Today, Schedule Mode)",
       "description": "Only populated in ELECTRICITY_TARIFF_MODE=schedule. The duration-weighted blended ILS/kWh rate for today, given the configured time-of-use windows.",
-      "gridPos": { "x": 18, "y": 24, "w": 6, "h": 6 },
+      "gridPos": { "x": 18, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_electricity_effective_rate_ils_per_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
+      "targets": [{ "expr": "israel_utility_electricity_effective_rate_ils_per_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A", "instant": true }],
       "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 3, "noValue": "flat mode / not configured" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
@@ -210,7 +266,7 @@
       "type": "timeseries",
       "title": "Daily Electricity Consumption",
       "description": "One point roughly every 1-2 days, matching IEC's own publication cadence.",
-      "gridPos": { "x": 0, "y": 30, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 36, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_consumption_daily_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "kwatth", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } }, "overrides": [] },
@@ -220,7 +276,7 @@
       "id": 26,
       "type": "timeseries",
       "title": "Monthly Electricity Consumption",
-      "gridPos": { "x": 12, "y": 30, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 36, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_consumption_monthly_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "kwatth", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } }, "overrides": [] },
@@ -231,7 +287,7 @@
       "type": "timeseries",
       "title": "Cumulative Electricity Meter Reading",
       "description": "The long-term trend the Home app can't show you.",
-      "gridPos": { "x": 0, "y": 38, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 44, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_meter_reading_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "kwatth" }, "overrides": [] },

@@ -1,20 +1,27 @@
 /**
  * Cost estimation for consumption already fetched from the water/electricity
- * APIs. Two modes:
+ * APIs. Three modes:
  *
  * - `flat`: one price times one quantity. The honest default for anyone not
- *   on a time-of-use plan, and the fallback for a plan that doesn't fit the
- *   schedule model below.
- * - `schedule`: models Israeli time-of-use ("taoz") electricity plans, e.g.
- *   "70% off 17:00-23:00". IEC never reports consumption finer than a whole
- *   published day's total kWh (see README/plan notes — there is no hourly
- *   resolution to attribute usage within a day), so this computes a
+ *   on a time-of-use or tiered plan, and the fallback for a plan that doesn't
+ *   fit the models below.
+ * - `schedule` (electricity): models Israeli time-of-use ("taoz") electricity
+ *   plans, e.g. "70% off 17:00-23:00". IEC never reports consumption finer
+ *   than a whole published day's total kWh (see README/plan notes — there is
+ *   no hourly resolution to attribute usage within a day), so this computes a
  *   duration-weighted *blended* rate for the day being priced — the average
  *   rate across that day's 1440 minutes, weighted by how many of them fall in
  *   each tariff window — and multiplies the day's total kWh by that single
  *   number. This assumes consumption is spread evenly across the day; it is
  *   an estimate, not a bill reconstruction, and is exposed as its own metric
  *   so that assumption is visible rather than hidden inside a cost figure.
+ * - `tiered` (water): models Israeli water tariffs, which have no
+ *   time-of-use concept but are volume-tiered instead — a subsidized rate up
+ *   to an allowance based on the number of people registered on the account,
+ *   then a higher rate beyond it (see e.g.
+ *   https://www.yuvallim.co.il/תעריפי-מים-וביוב/). Consumption up to
+ *   `householdSize * allowancePerPersonCubicMeters` is priced at
+ *   `normalRatePerCubicMeter`, the rest at `excessRatePerCubicMeter`.
  */
 import { readFileSync } from 'node:fs';
 
@@ -144,6 +151,48 @@ export function blendedRateForDay(schedule: TariffSchedule, date: Date): number 
   const baseMinutes = MINUTES_PER_DAY - discountedMinutes;
   const totalRate = totalDiscountedRate + baseMinutes * schedule.baseRatePerKwh;
   return totalRate / MINUTES_PER_DAY;
+}
+
+export interface WaterTariffTiers {
+  /** ILS per m3, for consumption up to the household's subsidized threshold. */
+  normalRatePerCubicMeter: number;
+  /** ILS per m3, for consumption beyond the household's subsidized threshold. */
+  excessRatePerCubicMeter: number;
+  /** Number of people registered on the water account. */
+  householdSize: number;
+  /** m3 per registered person before the higher rate applies. */
+  allowancePerPersonCubicMeters: number;
+}
+
+/** The subsidized-rate threshold for this household, m3. */
+export function waterTariffThreshold(tiers: WaterTariffTiers): number {
+  return tiers.householdSize * tiers.allowancePerPersonCubicMeters;
+}
+
+/**
+ * ILS cost of `consumptionCubicMeters`, priced at `normalRatePerCubicMeter`
+ * up to the household's subsidized threshold and `excessRatePerCubicMeter`
+ * for the remainder.
+ */
+export function tieredWaterCost(tiers: WaterTariffTiers, consumptionCubicMeters: number): number {
+  const threshold = waterTariffThreshold(tiers);
+  if (consumptionCubicMeters <= threshold) {
+    return consumptionCubicMeters * tiers.normalRatePerCubicMeter;
+  }
+  return threshold * tiers.normalRatePerCubicMeter + (consumptionCubicMeters - threshold) * tiers.excessRatePerCubicMeter;
+}
+
+/**
+ * The average ILS/m3 rate that `tieredWaterCost` works out to for
+ * `consumptionCubicMeters` — exposed as its own metric so the tiering isn't
+ * hidden inside the cost figure, mirroring `blendedRateForDay` for
+ * electricity's schedule mode.
+ */
+export function effectiveWaterRate(tiers: WaterTariffTiers, consumptionCubicMeters: number): number {
+  if (consumptionCubicMeters <= 0) {
+    return tiers.normalRatePerCubicMeter;
+  }
+  return tieredWaterCost(tiers, consumptionCubicMeters) / consumptionCubicMeters;
 }
 
 function describe(error: unknown): string {

@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { blendedRateForDay, loadTariffSchedule, TariffScheduleError } from '../src/cost/tariff.js';
+import {
+  blendedRateForDay,
+  effectiveWaterRate,
+  loadTariffSchedule,
+  TariffScheduleError,
+  tieredWaterCost,
+  waterTariffThreshold,
+  type WaterTariffTiers,
+} from '../src/cost/tariff.js';
 
 function scheduleFile(json: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), 'tariff-'));
@@ -88,4 +96,40 @@ test('rejects malformed JSON', () => {
   const path = join(dir, 'bad.json');
   writeFileSync(path, '{ not json');
   assert.throws(() => loadTariffSchedule(path), TariffScheduleError);
+});
+
+const TIERS: WaterTariffTiers = {
+  normalRatePerCubicMeter: 10,
+  excessRatePerCubicMeter: 20,
+  householdSize: 4,
+  allowancePerPersonCubicMeters: 3.5,
+};
+
+test('waterTariffThreshold multiplies household size by the per-person allowance', () => {
+  assert.equal(waterTariffThreshold(TIERS), 14);
+});
+
+test('tieredWaterCost prices consumption under the threshold entirely at the normal rate', () => {
+  assert.equal(tieredWaterCost(TIERS, 10), 100);
+});
+
+test('tieredWaterCost prices consumption exactly at the threshold entirely at the normal rate', () => {
+  assert.equal(tieredWaterCost(TIERS, 14), 140);
+});
+
+test('tieredWaterCost prices only the excess above the threshold at the excess rate', () => {
+  // 14 m3 @ 10 + 6 m3 @ 20
+  assert.equal(tieredWaterCost(TIERS, 20), 14 * 10 + 6 * 20);
+});
+
+test('effectiveWaterRate is the normal rate for zero consumption', () => {
+  assert.equal(effectiveWaterRate(TIERS, 0), TIERS.normalRatePerCubicMeter);
+});
+
+test('effectiveWaterRate is the blended cost-per-m3 once above the threshold', () => {
+  const consumption = 20;
+  const expected = tieredWaterCost(TIERS, consumption) / consumption;
+  assert.equal(effectiveWaterRate(TIERS, consumption), expected);
+  assert.ok(effectiveWaterRate(TIERS, consumption) > TIERS.normalRatePerCubicMeter);
+  assert.ok(effectiveWaterRate(TIERS, consumption) < TIERS.excessRatePerCubicMeter);
 });
