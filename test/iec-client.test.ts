@@ -169,6 +169,84 @@ test('fetchSnapshot returns the newest daily figure, the monthly total and the c
   assert.equal(snapshot.monthly, 210.7);
 });
 
+test('getConsumption exposes a real, dated historical reading distinct from the always-"now" totalImport', async () => {
+  // Reproduces the shape confirmed against a live IEC account: the top-level
+  // `totalImport`/`totalImportDateForPeriod` genuinely differ per requested
+  // month, while `futureConsumptionInfo.totalImport` stays fixed at today's
+  // reading regardless of which month was requested.
+  const dir = mkdtempSync(join(tmpdir(), 'iec-'));
+  const path = join(dir, 'token.json');
+  const state: FakeIecState = { idToken: fakeIdToken(3600), refreshCount: 0 };
+  const fs = await import('node:fs/promises');
+  await fs.writeFile(
+    path,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: state.idToken }),
+  );
+
+  globalThis.fetch = (async (url: string, init: RequestInit = {}): Promise<Response> => {
+    const u = new URL(url);
+    if (u.hostname.includes('okta')) {
+      return json({ access_token: 'access', refresh_token: 'refresh', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: state.idToken });
+    }
+    if (u.pathname === '/api/customer') {
+      return json({ bpNumber: 'BP1' });
+    }
+    if (u.pathname === '/api/customer/contract/BP1') {
+      return json({ contracts: [{ contractId: CONTRACT_ID }] });
+    }
+    if (u.pathname === `/api/Device/${CONTRACT_ID}`) {
+      return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
+    }
+    if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
+      const body = JSON.parse(init.body as string) as { fromDate: string };
+      const isJuly = body.fromDate.startsWith('2026-07');
+      return json({
+        meterList: [
+          {
+            futureConsumptionInfo: { totalImport: 21679.714 },
+            totalImport: isJuly ? 20432.848 : 19219.25,
+            totalImportDateForPeriod: isJuly ? '2026-07-31' : '2026-05-31',
+            totalConsumptionForPeriod: isJuly ? 773.385 : 310.152,
+            periodConsumptions: [],
+          },
+        ],
+      });
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  const client = new IecClient(VALID_ID);
+  await client.loadTokenFromFile(path);
+
+  const july = await client.getConsumption(CONTRACT_ID, ReadingResolution.MONTHLY, '2026-07-01');
+  assert.equal(july.totalImport, 21679.714, 'the always-"now" figure must stay the same regardless of the requested month');
+  assert.equal(july.periodEndReading, 20432.848);
+  assert.equal(july.periodEndReadingDate, '2026-07-31');
+
+  const may = await client.getConsumption(CONTRACT_ID, ReadingResolution.MONTHLY, '2026-05-01');
+  assert.equal(may.totalImport, 21679.714);
+  assert.equal(may.periodEndReading, 19219.25, 'a different month must yield a different dated reading');
+  assert.equal(may.periodEndReadingDate, '2026-05-31');
+});
+
+test('getConsumption reports no dated reading when the endpoint gives none', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'iec-'));
+  const path = join(dir, 'token.json');
+  const state: FakeIecState = { idToken: fakeIdToken(3600), refreshCount: 0 };
+  globalThis.fetch = makeFakeIec(state) as typeof fetch;
+  const client = new IecClient(VALID_ID);
+  const fs = await import('node:fs/promises');
+  await fs.writeFile(
+    path,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: state.idToken }),
+  );
+  await client.loadTokenFromFile(path);
+
+  const result = await client.getConsumption(CONTRACT_ID, ReadingResolution.MONTHLY, '2026-08-01');
+  assert.equal(result.periodEndReading, null);
+  assert.equal(result.periodEndReadingDate, null);
+});
+
 test('saveTokenToFile round-trips through loadTokenFromFile', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'iec-'));
   const path = join(dir, 'sub', 'token.json');

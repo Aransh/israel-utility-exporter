@@ -4,7 +4,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { chunk, collectElectricity, collectWater, parseArgs, resolveRange } from '../src/backfill-cli.js';
+import {
+  buildEstimatedReadingsPrompt,
+  chunk,
+  collectElectricity,
+  collectWater,
+  parseArgs,
+  reconstructElectricityMeterReading,
+  reconstructMeterReadings,
+  resolveRange,
+} from '../src/backfill-cli.js';
 import type { ElectricityConfig, WaterConfig } from '../src/config.js';
 import { blendedRateForDay, TariffScheduleError, tieredWaterCost, waterTariffThreshold } from '../src/cost/tariff.js';
 import { ReadingResolution } from '../src/electricity/iec-client.js';
@@ -59,6 +68,23 @@ test('parseArgs rejects an unrecognized argument instead of silently ignoring it
 test('parseArgs rejects a flag missing its value instead of silently ignoring it', () => {
   assert.throws(() => parseArgs(['--service']), /--service requires a value/);
   assert.throws(() => parseArgs(['--days', '30', '--from']), /--from requires a value/);
+});
+
+test('parseArgs leaves includeEstimated undefined (meaning "ask interactively") when neither flag is given', () => {
+  assert.equal(parseArgs(['--days', '1']).includeEstimated, undefined);
+});
+
+test('parseArgs accepts --estimated-readings', () => {
+  assert.equal(parseArgs(['--days', '1', '--estimated-readings']).includeEstimated, true);
+});
+
+test('parseArgs accepts --no-estimated-readings', () => {
+  assert.equal(parseArgs(['--days', '1', '--no-estimated-readings']).includeEstimated, false);
+});
+
+test('parseArgs rejects combining --estimated-readings and --no-estimated-readings', () => {
+  assert.throws(() => parseArgs(['--days', '1', '--estimated-readings', '--no-estimated-readings']), /cannot be combined/);
+  assert.throws(() => parseArgs(['--days', '1', '--no-estimated-readings', '--estimated-readings']), /cannot be combined/);
 });
 
 test('resolveRange passes through an explicit --from/--to', () => {
@@ -209,6 +235,118 @@ test('collectWater counts days before `from` toward the monthly running total wi
   );
 });
 
+test('collectWater does not backfill the meter reading unless includeMeterReading is set', async () => {
+  globalThis.fetch = fakeWaterPortal() as typeof fetch;
+  const config: WaterConfig = { email: 'a@example.com', password: 'x', pollIntervalMs: 60_000, weeklyWindow: 'sunday', pricePerCubicMeter: null };
+  const points = await collectWater(config, '2026-01-01', '2026-01-02', SILENT_LOG);
+  assert.equal(points.filter((p) => p.metric === 'israel_utility_water_meter_reading_cubic_meters').length, 0);
+});
+
+test('collectWater reconstructs the meter reading by walking backward from today when includeMeterReading is set', async () => {
+  globalThis.fetch = fakeWaterPortal() as typeof fetch;
+  const config: WaterConfig = { email: 'a@example.com', password: 'x', pollIntervalMs: 60_000, weeklyWindow: 'sunday', pricePerCubicMeter: null };
+  const to = isoDate(new Date());
+  const from = shiftDays(to, -2);
+
+  const points = await collectWater(config, from, to, SILENT_LOG, { includeMeterReading: true });
+
+  const readingPoints = points.filter((p) => p.metric === 'israel_utility_water_meter_reading_cubic_meters');
+  // fakeWaterPortal reports the current reading as 100 and 1 m3/day consumption, so walking
+  // backward from today: today=100, yesterday=99, the day before=98.
+  assert.deepEqual(
+    new Map(readingPoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds(to) * 1000, 100],
+      [dateToEpochSeconds(shiftDays(to, -1)) * 1000, 99],
+      [dateToEpochSeconds(from) * 1000, 98],
+    ]),
+  );
+});
+
+test('reconstructMeterReadings walks backward from the newest known day, subtracting each day\'s consumption', () => {
+  const dailyConsumption = new Map([
+    ['2026-01-01', 1],
+    ['2026-01-02', 2],
+    ['2026-01-03', 3],
+  ]);
+  const readings = reconstructMeterReadings(100, dailyConsumption, '2026-01-01', '2026-01-03', '2026-01-03', SILENT_LOG, '777');
+  assert.deepEqual(
+    new Map(readings.map((r) => [r.date, r.value])),
+    new Map([
+      ['2026-01-03', 100],
+      ['2026-01-02', 97],
+      ['2026-01-01', 95],
+    ]),
+  );
+});
+
+test('reconstructMeterReadings anchors on the newest published day, not literally today, absorbing an unpublished tail', () => {
+  const dailyConsumption = new Map([
+    ['2026-01-01', 1],
+    ['2026-01-02', 2],
+    // 2026-01-03 (== today) hasn't been published yet, same as real portal lag.
+  ]);
+  const readings = reconstructMeterReadings(100, dailyConsumption, '2026-01-01', '2026-01-03', '2026-01-03', SILENT_LOG, '777');
+  assert.deepEqual(
+    new Map(readings.map((r) => [r.date, r.value])),
+    new Map([
+      ['2026-01-02', 100],
+      ['2026-01-01', 98],
+    ]),
+  );
+});
+
+test('reconstructMeterReadings stops at the first day with no published consumption instead of guessing', () => {
+  const dailyConsumption = new Map([
+    ['2026-01-01', 1],
+    // 2026-01-02 missing entirely — a real gap, not just today's lag — so
+    // 2026-01-02's own reading is computable (needs only 01-03's known
+    // consumption), but nothing before it is, since that would need 01-02's.
+    ['2026-01-03', 3],
+  ]);
+  const readings = reconstructMeterReadings(100, dailyConsumption, '2026-01-01', '2026-01-03', '2026-01-03', SILENT_LOG, '777');
+  assert.deepEqual(
+    new Map(readings.map((r) => [r.date, r.value])),
+    new Map([
+      ['2026-01-03', 100],
+      ['2026-01-02', 97],
+    ]),
+  );
+});
+
+test('reconstructMeterReadings stops rather than writing a negative reading', () => {
+  const dailyConsumption = new Map([
+    ['2026-01-01', 90],
+    ['2026-01-02', 40],
+    ['2026-01-03', 5],
+  ]);
+  const readings = reconstructMeterReadings(50, dailyConsumption, '2025-12-30', '2026-01-03', '2026-01-03', SILENT_LOG, '777');
+  // 01-03=50, minus 5 -> 01-02=45, minus 40 -> 01-01=5, minus 90 would be -85: stop there.
+  assert.deepEqual(
+    new Map(readings.map((r) => [r.date, r.value])),
+    new Map([
+      ['2026-01-03', 50],
+      ['2026-01-02', 45],
+      ['2026-01-01', 5],
+    ]),
+  );
+});
+
+test('reconstructMeterReadings returns nothing without a current reading to anchor to', () => {
+  const readings = reconstructMeterReadings(null, new Map([['2026-01-01', 1]]), '2026-01-01', '2026-01-01', '2026-01-01', SILENT_LOG, '777');
+  assert.deepEqual(readings, []);
+});
+
+test('reconstructMeterReadings returns nothing when no consumption has been published to anchor on', () => {
+  const readings = reconstructMeterReadings(100, new Map(), '2026-01-01', '2026-01-05', '2026-01-05', SILENT_LOG, '777');
+  assert.deepEqual(readings, []);
+});
+
+test('reconstructMeterReadings returns nothing when the newest published day is before the requested range', () => {
+  const readings = reconstructMeterReadings(100, new Map([['2025-12-01', 1]]), '2026-01-01', '2026-01-05', '2026-01-05', SILENT_LOG, '777');
+  assert.deepEqual(readings, []);
+});
+
 const VALID_ID = '000000000';
 const CONTRACT_ID = '900123456';
 const METER_SERIAL = '12345678';
@@ -231,7 +369,11 @@ function fakeIdToken(expiresInSeconds: number): string {
  * form that only resolves to the correct local day once parsed as a real
  * instant (not string-sliced).
  */
-function fakeIecMonthlyWithDailyBreakdown(dailyByLocalDate: Record<string, number>, monthTotal: number) {
+function fakeIecMonthlyWithDailyBreakdown(
+  dailyByLocalDate: Record<string, number>,
+  monthTotal: number,
+  periodEndReading?: { totalImport: number; asOf: string },
+) {
   return async (url: string, init: RequestInit = {}): Promise<Response> => {
     const u = new URL(url);
     if (u.hostname !== 'iecapi.iec.co.il') {
@@ -255,6 +397,8 @@ function fakeIecMonthlyWithDailyBreakdown(dailyByLocalDate: Record<string, numbe
         meterList: [
           {
             totalConsumptionForPeriod: monthTotal,
+            totalImport: periodEndReading?.totalImport,
+            totalImportDateForPeriod: periodEndReading?.asOf,
             // Each entry's `interval` is the true UTC instant of that day's
             // local midnight (computed independently of the test runner's
             // own timezone, via the same local->epoch conversion production
@@ -396,6 +540,124 @@ test('collectElectricity skips a period with an unparseable interval instead of 
   assert.equal(dailyPoints[0]!.timestampMs, dateToEpochSeconds('2026-01-02') * 1000);
 });
 
+test('collectElectricity does not backfill the meter reading unless includeMeterReading is set', async () => {
+  globalThis.fetch = fakeIecMonthlyWithDailyBreakdown(
+    { '2026-01-01': 1, '2026-01-02': 2, '2026-01-03': 3 },
+    6,
+    { totalImport: 100, asOf: '2026-01-31' },
+  ) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+
+  const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG);
+  assert.equal(points.filter((p) => p.metric === 'israel_utility_electricity_meter_reading_kwh').length, 0);
+});
+
+test('collectElectricity reconstructs the meter reading from IEC\'s own dated reading when includeMeterReading is set', async () => {
+  globalThis.fetch = fakeIecMonthlyWithDailyBreakdown(
+    { '2026-01-01': 1, '2026-01-02': 2, '2026-01-03': 3 },
+    6,
+    { totalImport: 100, asOf: '2026-01-03' },
+  ) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+
+  const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG, { includeMeterReading: true });
+
+  const readingPoints = points.filter((p) => p.metric === 'israel_utility_electricity_meter_reading_kwh');
+  // Anchored at 100 on 01-03; walking backward: 01-03=100, 01-02=100-3=97, 01-01=97-2=95.
+  assert.deepEqual(
+    new Map(readingPoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds('2026-01-03') * 1000, 100],
+      [dateToEpochSeconds('2026-01-02') * 1000, 97],
+      [dateToEpochSeconds('2026-01-01') * 1000, 95],
+    ]),
+  );
+});
+
+test('reconstructElectricityMeterReading walks backward from IEC\'s own dated reading', () => {
+  const dailyConsumption = new Map([
+    ['2026-01-01', 1],
+    ['2026-01-02', 2],
+    ['2026-01-03', 3],
+  ]);
+  const readings = reconstructElectricityMeterReading(100, '2026-01-03', dailyConsumption, '2026-01-01', '2026-01-03', SILENT_LOG, '900123456');
+  assert.deepEqual(
+    new Map(readings.map((r) => [r.date, r.value])),
+    new Map([
+      ['2026-01-03', 100],
+      ['2026-01-02', 97],
+      ['2026-01-01', 95],
+    ]),
+  );
+});
+
+test('reconstructElectricityMeterReading returns nothing without a dated reading to anchor to', () => {
+  assert.deepEqual(reconstructElectricityMeterReading(null, null, new Map(), '2026-01-01', '2026-01-03', SILENT_LOG, '900123456'), []);
+  assert.deepEqual(reconstructElectricityMeterReading(100, null, new Map(), '2026-01-01', '2026-01-03', SILENT_LOG, '900123456'), []);
+});
+
+test('reconstructElectricityMeterReading returns nothing when the dated reading is before the requested range', () => {
+  const readings = reconstructElectricityMeterReading(100, '2025-12-31', new Map(), '2026-01-01', '2026-01-03', SILENT_LOG, '900123456');
+  assert.deepEqual(readings, []);
+});
+
+test('reconstructElectricityMeterReading stops at the first day with no published consumption instead of guessing', () => {
+  const dailyConsumption = new Map([
+    ['2026-01-01', 1],
+    // 2026-01-02 missing
+    ['2026-01-03', 3],
+  ]);
+  const readings = reconstructElectricityMeterReading(100, '2026-01-03', dailyConsumption, '2026-01-01', '2026-01-03', SILENT_LOG, '900123456');
+  assert.deepEqual(
+    new Map(readings.map((r) => [r.date, r.value])),
+    new Map([
+      ['2026-01-03', 100],
+      ['2026-01-02', 97],
+    ]),
+  );
+});
+
+test('reconstructElectricityMeterReading stops rather than writing a negative reading', () => {
+  const dailyConsumption = new Map([
+    ['2026-01-01', 90],
+    ['2026-01-02', 40],
+    ['2026-01-03', 5],
+  ]);
+  const readings = reconstructElectricityMeterReading(50, '2026-01-03', dailyConsumption, '2025-12-30', '2026-01-03', SILENT_LOG, '900123456');
+  assert.deepEqual(
+    new Map(readings.map((r) => [r.date, r.value])),
+    new Map([
+      ['2026-01-03', 50],
+      ['2026-01-02', 45],
+      ['2026-01-01', 5],
+    ]),
+  );
+});
+
+test('buildEstimatedReadingsPrompt names only the meter(s) actually being backfilled', () => {
+  assert.match(buildEstimatedReadingsPrompt(true, false), /water meter reading/);
+  assert.doesNotMatch(buildEstimatedReadingsPrompt(true, false), /electricity meter reading/);
+  assert.match(buildEstimatedReadingsPrompt(false, true), /electricity meter reading/);
+  assert.doesNotMatch(buildEstimatedReadingsPrompt(false, true), /water meter reading/);
+  const both = buildEstimatedReadingsPrompt(true, true);
+  assert.match(both, /water meter reading/);
+  assert.match(both, /electricity meter reading/);
+});
+
 test('collectWater in tiered mode also backfills the threshold, effective rate and cost gauges from the running monthly total', async () => {
   globalThis.fetch = fakeWaterPortal() as typeof fetch;
 
@@ -425,6 +687,10 @@ test('collectWater in tiered mode also backfills the threshold, effective rate a
       [dateToEpochSeconds('2026-01-03') * 1000, 5],
     ]),
   );
+
+  const normalRatePoints = points.filter((p) => p.metric === 'israel_utility_water_tariff_normal_rate_ils_per_cubic_meter');
+  assert.equal(normalRatePoints.length, 3);
+  assert.ok(normalRatePoints.every((p) => p.value === tariffTiers.normalRatePerCubicMeter));
 
   const costPoints = points.filter((p) => p.metric === 'israel_utility_water_cost_estimate_ils');
   assert.deepEqual(
@@ -540,7 +806,7 @@ test('collectElectricity in schedule mode backfills the effective-rate and cost 
 
   const points = await collectElectricity(config, '2026-01-01', '2026-01-02', SILENT_LOG);
 
-  const expectedRate = (date: string) => blendedRateForDay({ currency: 'ILS', ...schedule }, parseYmdNoon(date));
+  const expectedRate = (date: string) => blendedRateForDay(schedule, parseYmdNoon(date));
 
   const ratePoints = points.filter((p) => p.metric === 'israel_utility_electricity_effective_rate_ils_per_kwh');
   assert.deepEqual(

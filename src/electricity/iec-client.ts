@@ -95,10 +95,27 @@ export interface PeriodConsumption {
 export interface ConsumptionResult {
   /** One row per period the endpoint reports for the requested resolution. */
   periods: PeriodConsumption[];
-  /** Cumulative meter reading as of the response, kWh — the figure IEC's own site calls "last reading". */
+  /**
+   * Cumulative meter reading as of *now*, kWh — the figure IEC's own site
+   * calls "last reading". Confirmed against a live account to be identical
+   * regardless of which historical period was requested — it always
+   * reflects today, not the requested period — so it's only meaningful for
+   * the live snapshot, never as a historical value. See `periodEndReading`
+   * for that.
+   */
   totalImport: number | null;
   /** Total for the requested period as computed server-side (used for the monthly figure). */
   totalForPeriod: number | null;
+  /**
+   * Cumulative meter reading as of `periodEndReadingDate`, kWh — a genuine
+   * dated historical reading (distinct from `totalImport`, which is always
+   * "now"). Confirmed against a live account: querying two different past
+   * months returns two different values here, each dated to that month's
+   * last day.
+   */
+  periodEndReading: number | null;
+  /** YYYY-MM-DD `periodEndReading` is as of. Null when `periodEndReading` is null. */
+  periodEndReadingDate: string | null;
 }
 
 export class IECError extends Error {
@@ -452,7 +469,7 @@ export class IecClient {
     const meterList = (raw.meterList ?? []) as Array<Record<string, unknown>>;
     const meter = meterList[0];
     if (!meter) {
-      return { periods: [], totalImport: null, totalForPeriod: null };
+      return { periods: [], totalImport: null, totalForPeriod: null, periodEndReading: null, periodEndReadingDate: null };
     }
 
     const periods = ((meter.periodConsumptions ?? []) as Array<Record<string, unknown>>)
@@ -462,8 +479,11 @@ export class IecClient {
     const future = meter.futureConsumptionInfo as Record<string, unknown> | undefined;
     const totalImport = numberOrNull(future?.totalImport ?? meter.totalImport);
     const totalForPeriod = numberOrNull(meter.totalConsumptionForPeriod);
+    const periodEndReadingDateRaw = meter.totalImportDateForPeriod;
+    const periodEndReadingDate = typeof periodEndReadingDateRaw === 'string' ? periodEndReadingDateRaw.slice(0, 10) : null;
+    const periodEndReading = periodEndReadingDate ? numberOrNull(meter.totalImport) : null;
 
-    return { periods, totalImport, totalForPeriod };
+    return { periods, totalImport, totalForPeriod, periodEndReading, periodEndReadingDate };
   }
 
   /**
