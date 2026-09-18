@@ -129,6 +129,7 @@ empty `/metrics` silently.
 | `ELECTRICITY_PRICE_PER_KWH` | — | ILS. Used when `flat`. |
 | `ELECTRICITY_TARIFF_SCHEDULE_FILE` | — | Path to a JSON schedule file. Used when `schedule`. See `tariff-schedule.example.json`. |
 | `REMOTE_WRITE_URL` | — | A Prometheus remote_write endpoint. Only used by the [backfill CLI](#historical-data-backfill), not the running exporter. |
+| `REMOTE_WRITE_EXTRA_LABELS` | — | Comma-separated `key=value` pairs (e.g. `job=israel-utility-exporter,instance=host:9877`) applied to every backfilled series — **set this to match your scrape config's `job`/`instance`**, or backfilled and live-scraped data land as separate series. |
 | `REMOTE_WRITE_USERNAME` / `REMOTE_WRITE_PASSWORD` | — | HTTP Basic auth for `REMOTE_WRITE_URL`. Set together. |
 | `REMOTE_WRITE_BEARER_TOKEN` | — | Bearer token auth for `REMOTE_WRITE_URL`. Mutually exclusive with Basic auth. |
 | `REMOTE_WRITE_TIMEOUT_MS` | `30000` | Per-request timeout for the remote_write POST. |
@@ -307,6 +308,14 @@ node dist/backfill-cli.js --service electricity --from 2026-01-01 --to 2026-03-0
 node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, no write
 ```
 
+- **Match your scrape config's `job`/`instance` labels, or the graph will split
+  in two.** Those labels are assigned by Prometheus itself when it scrapes a
+  target — they're not part of `/metrics` — so a backfilled series has no
+  `job`/`instance` label unless you add it yourself, making it a *different*
+  series from the one your live scrapes produce for the same meter/contract.
+  Set `REMOTE_WRITE_EXTRA_LABELS` to whatever your scrape config uses, e.g.
+  for the `job_name`/target in `prometheus/prometheus.yml.example`:
+  `REMOTE_WRITE_EXTRA_LABELS=job=israel-utility-exporter,instance=israel-utility-exporter:9877`.
 - Only **raw numbers the utility APIs report directly** are backfilled: daily
   consumption for both utilities, weekly consumption for water (electricity
   has no weekly metric), and monthly consumption for both. No cost/rate
@@ -316,6 +325,13 @@ node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, 
 - The range you can actually backfill is **limited to whatever the underlying
   portal API itself still retains** — there's no way to go back further than
   that, regardless of `--days`/`--from`.
+- **Your remote_write receiver needs to be configured to accept historical
+  timestamps, or it can silently drop them while still reporting success.**
+  Prometheus's own remote-write receiver rejects out-of-order samples by
+  default (`--storage.tsdb.out-of-order-time-window` defaults to `0`) — set
+  it to cover your backfill range. Other receivers have their own retention/
+  backfill-age limits. If a wide backfill looks incomplete, check the
+  receiver's own logs/config rather than assuming the CLI missed something.
 - Electricity requires a token already saved by `npm run login:electricity` —
   IEC's OTP login can't be automated here.
 - Samples are timestamped at **local midnight** of the day they cover, the

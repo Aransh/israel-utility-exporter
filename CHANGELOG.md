@@ -11,6 +11,25 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-18
+
+### Fixed
+
+- The backfill CLI now supports `REMOTE_WRITE_EXTRA_LABELS` (comma-separated
+  `key=value` pairs, e.g. `job=israel-utility-exporter,instance=host:9877`)
+  applied to every backfilled series. Without it, a backfilled series had no
+  `job`/`instance` label — those are assigned by Prometheus at scrape time,
+  not carried in `/metrics` — so it landed as a *different* series from the
+  one live scrapes produce for the same meter/contract, splitting the graph
+  in two. Parsed independently of `REMOTE_WRITE_URL` so a `--dry-run`
+  preview shows the same labels a real run would write.
+- Electricity backfill now fetches daily consumption in `DAILY_LOOKBACK_DAYS`
+  chunks instead of one call spanning the whole range. IEC's
+  `RemoteReadingRange` doesn't reliably return one row per day for a wide
+  `fromDate` — observed in practice returning many rows all dated to
+  `fromDate` itself rather than the requested range, so a wide backfill
+  recovered close to nothing.
+
 ## [0.3.1] - 2026-09-18
 
 ### Fixed
@@ -127,7 +146,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.1...v0.2.2
