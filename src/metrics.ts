@@ -83,6 +83,12 @@ export const waterGauges = {
     labelNames: WATER_LABELS,
     registers: [registry],
   }),
+  tariffNormalRateIlsPerCubicMeter: new Gauge({
+    name: 'israel_utility_water_tariff_normal_rate_ils_per_cubic_meter',
+    help: 'The configured below-allowance ILS/m3 rate (WATER_PRICE_PER_CUBIC_METER), exposed so dashboards can flag when the blended effective rate has crept above it. Only present in tiered tariff mode.',
+    labelNames: WATER_LABELS,
+    registers: [registry],
+  }),
   costEstimateIls: new Gauge({
     name: 'israel_utility_water_cost_estimate_ils',
     help: 'Estimated cost of this month-to-date consumption. Only present when WATER_PRICE_PER_CUBIC_METER is set (flat mode) or WATER_TARIFF_MODE=tiered is fully configured.',

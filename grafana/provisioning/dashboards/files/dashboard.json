@@ -29,7 +29,7 @@
       "type": "stat",
       "title": "Water Meter Reading",
       "description": "Cumulative meter reading. If this stops moving entirely, check WaterScrapeStale in Alerting.",
-      "gridPos": { "x": 0, "y": 1, "w": 8, "h": 6 },
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_meter_reading_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "m3", "decimals": 3 }, "overrides": [] },
@@ -47,7 +47,7 @@
       "type": "stat",
       "title": "Water Collector Health",
       "description": "1 = last poll of the Read Your Meter Pro portal succeeded.",
-      "gridPos": { "x": 8, "y": 1, "w": 8, "h": 6 },
+      "gridPos": { "x": 12, "y": 1, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_scrape_success", "refId": "A" }],
       "fieldConfig": {
@@ -71,74 +71,53 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Water Cost Estimate (Month to Date)",
-      "description": "Only populated when WATER_PRICE_PER_CUBIC_METER is set (flat mode) or WATER_TARIFF_MODE=tiered is fully configured.",
-      "gridPos": { "x": 16, "y": 1, "w": 8, "h": 6 },
+      "title": "Water Cost",
+      "description": "Month-to-date estimate and the portal's own month-end forecast, priced the same way (flat, or tiered if WATER_TARIFF_MODE=tiered). The background trend is the month-to-date figure over the dashboard's time range — it resets each calendar month, so a sawtooth is expected, not a bug. Only populated when WATER_PRICE_PER_CUBIC_METER is set (flat mode) or tiered mode is fully configured.",
+      "gridPos": { "x": 0, "y": 7, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }],
+      "targets": [
+        { "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Month to date (meter {{meter_id}})", "refId": "A" },
+        { "expr": "israel_utility_water_cost_estimate_forecast_ils", "legendFormat": "Forecast, month end (meter {{meter_id}})", "refId": "B" }
+      ],
       "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "value",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto"
       }
     },
     {
       "id": 8,
       "type": "stat",
-      "title": "Water Effective Rate (Tiered Mode)",
-      "description": "This month-to-date consumption's blended ILS/m3 rate, given WATER_TARIFF_HOUSEHOLD_SIZE and the allowance. Only populated in WATER_TARIFF_MODE=tiered.",
-      "gridPos": { "x": 0, "y": 7, "w": 8, "h": 6 },
+      "title": "Water Rate vs Normal (Tiered Mode)",
+      "description": "This month-to-date consumption's blended ILS/m3 rate (israel_utility_water_effective_rate_ils_per_cubic_meter), as a percentage of the below-allowance rate (israel_utility_water_tariff_normal_rate_ils_per_cubic_meter). 100% means every m3 so far has been priced at the normal rate; above 100% means this month has spilled into the pricier excess tier — only the excess m3 are actually charged the higher rate, not the whole month (see the README). Only populated in WATER_TARIFF_MODE=tiered.",
+      "gridPos": { "x": 12, "y": 7, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        { "expr": "israel_utility_water_effective_rate_ils_per_cubic_meter", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }
+        {
+          "expr": "100 * israel_utility_water_effective_rate_ils_per_cubic_meter / israel_utility_water_tariff_normal_rate_ils_per_cubic_meter",
+          "legendFormat": "Meter {{meter_id}}",
+          "refId": "A"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 3, "noValue": "flat mode / not configured" }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "noValue": "flat mode / not configured",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 100 }] }
+        },
+        "overrides": []
+      },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
         "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto"
-      }
-    },
-    {
-      "id": 9,
-      "type": "stat",
-      "title": "Water Tariff Threshold (Tiered Mode, Month to Date)",
-      "description": "max(WATER_TARIFF_HOUSEHOLD_SIZE, 2) x WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS. Consumption above this is priced at WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER. Only populated in WATER_TARIFF_MODE=tiered.",
-      "gridPos": { "x": 8, "y": 7, "w": 8, "h": 6 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_water_tariff_threshold_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }],
-      "fieldConfig": { "defaults": { "unit": "m3", "decimals": 2, "noValue": "flat mode / not configured" }, "overrides": [] },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto"
-      }
-    },
-    {
-      "id": 10,
-      "type": "stat",
-      "title": "Water Forecast Cost Estimate (Month End)",
-      "description": "Estimated cost of the portal's own month-end forecast, priced the same way as the month-to-date estimate (flat or tiered).",
-      "gridPos": { "x": 16, "y": 7, "w": 8, "h": 6 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_water_cost_estimate_forecast_ils", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }],
-      "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" }, "overrides": [] },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "none",
+        "colorMode": "background",
+        "graphMode": "area",
         "justifyMode": "auto"
       }
     },
@@ -247,17 +226,17 @@
       "id": 23,
       "type": "stat",
       "title": "Electricity Cost Estimate (Newest Day)",
-      "description": "Only populated when ELECTRICITY_PRICE_PER_KWH or a tariff schedule is configured. In schedule mode this is a duration-weighted estimate, not a bill reconstruction — see README.",
+      "description": "Only populated when ELECTRICITY_PRICE_PER_KWH or a tariff schedule is configured. In schedule mode this is a duration-weighted estimate, not a bill reconstruction — see README. The background trend is this figure over the dashboard's time range, so a day-to-day cost swing is visible instead of only the latest number.",
       "gridPos": { "x": 12, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_electricity_cost_estimate_ils", "legendFormat": "Contract {{contract_id}}", "refId": "A", "instant": true }],
+      "targets": [{ "expr": "israel_utility_electricity_cost_estimate_ils", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "value",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto"
       }
     },

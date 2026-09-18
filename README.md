@@ -183,7 +183,6 @@ you supply the price yourself:
 
   ```json
   {
-    "currency": "ILS",
     "baseRatePerKwh": 0.6115,
     "windows": [
       { "days": ["sun", "mon", "tue", "wed", "thu"], "start": "17:00", "end": "23:00", "discountPercent": 70 },
@@ -231,6 +230,10 @@ you supply the price yourself:
   `israel_utility_water_effective_rate_ils_per_cubic_meter` expose the
   threshold and the resulting blended ILS/m3 rate, so — as with electricity's
   schedule mode — neither is hidden inside the cost figure.
+  `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` also exposes
+  the configured below-allowance rate itself, so a dashboard can flag once
+  the blended rate has crept above it, without hardcoding your rate into the
+  dashboard.
 
   **Get the actual numbers from your own water corporation's published
   tariff and account details** — they change periodically and this exporter
@@ -276,6 +279,7 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_water_consumption_forecast_liters` | The portal's own month-end forecast. |
 | `israel_utility_water_tariff_threshold_cubic_meters` | This month's subsidized-rate threshold. Tiered tariff mode only. |
 | `israel_utility_water_effective_rate_ils_per_cubic_meter` | This month-to-date consumption's blended ILS/m3 rate. Tiered tariff mode only. |
+| `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` | The configured below-allowance rate itself, for comparison against the effective rate above. Tiered tariff mode only. |
 | `israel_utility_water_cost_estimate_ils` | Month-to-date cost, if priced (flat or tiered). |
 | `israel_utility_water_cost_estimate_forecast_ils` | Estimated cost of the portal's own month-end forecast, priced the same way. |
 | `israel_utility_water_meter_info` | Always 1; carries `meter_serial` for dashboard joins. |
@@ -299,11 +303,19 @@ Plus `israel_utility_exporter_build_info{version="..."}`.
 
 ## Grafana dashboard & Prometheus alerts
 
+![Water pricing row: cost estimate with a month-to-date sparkline, and the effective rate as a percentage of the normal rate, turning orange once the excess tier kicks in](docs/dashboard-water-pricing.png)
+
 - `grafana/provisioning/dashboards/files/dashboard.json` — auto-provisioned by
   `docker-compose.yml`, or import it manually into your own Grafana. Two
   rows, Water and Electricity, each showing the cumulative meter trend,
   daily/monthly consumption over time, cost estimate, and collector health —
-  a row simply shows "No data" if that collector is disabled.
+  a row simply shows "No data" if that collector is disabled. The water
+  row's pricing panels (screenshot above) show month-to-date cost and the
+  portal's forecast side by side with a sparkline of the trend, plus the
+  effective rate expressed as a percentage of the normal (below-allowance)
+  rate — 100% means every m3 so far is priced at the normal rate, and the
+  panel background turns orange once the month has spilled into the pricier
+  excess tier.
 - `prometheus/alerts.yml` — two rule groups:
   - **Health alerts** (safe to run as shipped): the exporter being
     unreachable, either collector going stale (no successful poll in 6h) or
@@ -369,6 +381,11 @@ node dist/backfill-cli.js --service electricity --from 2026-01-01 --to 2026-03-0
 node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, no write
 ```
 
+Running it interactively also asks whether to include **estimated** cumulative
+meter readings (see below); pass `--estimated-readings` or
+`--no-estimated-readings` to answer that up front instead (required in a
+non-interactive/cron context — without one, it defaults to skipping them).
+
 - **Match your scrape config's `job`/`instance` labels, or the graph will split
   in two.** Those labels are assigned by Prometheus itself when it scrapes a
   target — they're not part of `/metrics` — so a backfilled series has no
@@ -384,6 +401,7 @@ node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, 
   (`israel_utility_water_cost_estimate_ils`,
   `israel_utility_water_tariff_threshold_cubic_meters`,
   `israel_utility_water_effective_rate_ils_per_cubic_meter`,
+  `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter`,
   `israel_utility_electricity_cost_estimate_ils`,
   `israel_utility_electricity_effective_rate_ils_per_kwh`). Those are priced
   with **today's tariff config**, the same way the live collectors always
@@ -395,6 +413,29 @@ node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, 
   (`israel_utility_water_consumption_forecast_liters` and
   `israel_utility_water_cost_estimate_forecast_ils`) are never backfilled —
   a forecast is inherently forward-looking and has no historical equivalent.
+- **Optionally, the cumulative meter reading can also be backfilled** —
+  `israel_utility_water_meter_reading_cubic_meters` and
+  `israel_utility_electricity_meter_reading_kwh`. Both walk backward from a
+  known reading, subtracting each day's already-fetched consumption, but
+  how reliable that known reading is differs by service:
+  - **Water** has no historical reading available anywhere in its API, so
+    the anchor is today's *live* reading — a **best-effort estimate**, not
+    a figure the portal ever reported for a past day.
+  - **Electricity** is better than an estimate: IEC's own monthly response
+    carries a genuine, dated reading for the requested month (distinct from
+    the always-"as of now" figure the live gauge uses), so each month
+    reconstructs from its own real historical anchor instead of one guess
+    for the whole range.
+
+  Either way, reconstruction stops rather than guessing as soon as it hits
+  a day with no published consumption, or would otherwise go negative, so a
+  real gap in the portal's history simply limits how far back it can go
+  instead of producing wrong values past it. Neither can detect a meter
+  swap, a meter reset, or a house move — any of those silently invalidates
+  every reconstructed reading from before it happened, so skip this if one
+  of those occurred within the range you're backfilling. Because of that,
+  it's opt-in: pass `--estimated-readings`, or answer "y" at the
+  interactive prompt.
 - Monthly consumption is written as a **running month-to-date total, one
   sample per day** — the same thing the live gauge shows if scraped that
   day — not a single point on the 1st carrying the whole month's eventual

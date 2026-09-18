@@ -11,6 +11,57 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-19
+
+### Added
+
+- `backfill-cli.js` can now also backfill the cumulative meter reading for
+  both services (`israel_utility_water_meter_reading_cubic_meters`,
+  `israel_utility_electricity_meter_reading_kwh`), reconstructed by walking
+  backward from a known reading and subtracting each day's already-fetched
+  consumption. Water's anchor is today's live reading (a best-effort
+  estimate); electricity's is a genuine dated reading IEC's own monthly
+  response already carries per month, reconstructed independently for each
+  month rather than from one guess across the whole range. It's opt-in
+  (`--estimated-readings`/`--no-estimated-readings`, or an interactive
+  prompt when neither flag is given) since neither can detect a meter swap,
+  reset, or house move, and water's figure in particular is an estimate the
+  portal never actually reported for that day.
+- `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter`: exposes the
+  configured below-allowance rate itself (tiered tariff mode only), so the
+  redesigned "Water Effective Rate" dashboard panel can flag once the
+  blended effective rate has crept above it, without hardcoding a
+  household's specific rate into the dashboard. Also backfilled by
+  `backfill-cli.js` alongside the other tiered-mode metrics.
+
+### Changed
+
+- Electricity tariff schedule `windows` can now express an overnight span
+  directly — e.g. `{ "start": "23:00", "end": "17:00" }` for a night-discount
+  plan like SuperPower's "Night Plus". `end` earlier than `start` now means
+  the window wraps past midnight into the next day, instead of being
+  rejected; previously an overnight window had to be split into two entries
+  meeting at `23:59`. A window with `start` equal to `end` is still rejected
+  as an ambiguous zero-length window.
+- Dropped the tariff schedule's `currency` field. It was accepted and
+  defaulted to `'ILS'`, but nothing downstream ever read it —
+  `blendedRateForDay` never touched it, and the Grafana dashboard's ILS
+  units are hardcoded regardless of what a schedule file says. The water
+  tariff config never had an equivalent field either. Existing schedule
+  files that still set `currency` continue to load fine; the key is just
+  ignored.
+- Redesigned the water dashboard's pricing row: merged "Cost Estimate" and
+  "Forecast Cost Estimate" into one "Water Cost" panel (both values, plus a
+  sparkline of the month-to-date figure over the dashboard's time range, so
+  the cost trend is visible instead of only the current number), dropped the
+  standalone "Tariff Threshold" panel (redundant with the dashed "Monthly
+  Limit" line already on the consumption graph), and gave "Effective Rate" a
+  background color flag (green/orange) driven by the new
+  `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` metric, so
+  crossing into the excess tier is visible at a glance instead of requiring
+  a mental comparison against a number you have to already know. Six stat
+  panels in that row down to four.
+
 ## [0.5.0] - 2026-09-18
 
 ### Added
@@ -260,7 +311,9 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.2...v0.3.3
