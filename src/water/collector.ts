@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
-import { effectiveWaterRate, tieredWaterCost, waterTariffThreshold } from '../cost/tariff.js';
+import { effectiveWaterRate, waterCostEstimate, waterTariffThreshold } from '../cost/tariff.js';
 import type { WaterConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { waterGauges } from '../metrics.js';
@@ -195,10 +195,7 @@ export class WaterCollector {
 
   /** ILS cost of `consumptionCubicMeters` under the configured tariff, or null if no pricing is configured. */
   private costEstimate(consumptionCubicMeters: number): number | null {
-    if (this.config.tariffMode === 'tiered' && this.config.tariffTiers) {
-      return tieredWaterCost(this.config.tariffTiers, consumptionCubicMeters);
-    }
-    return this.config.pricePerCubicMeter !== null ? consumptionCubicMeters * this.config.pricePerCubicMeter : null;
+    return waterCostEstimate(this.config, consumptionCubicMeters);
   }
 
   private scheduleNext(): void {

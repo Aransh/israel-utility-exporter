@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { blendedRateForDay, loadTariffSchedule, type TariffSchedule } from '../cost/tariff.js';
+import { electricityEffectiveRate, loadTariffSchedule, type TariffSchedule } from '../cost/tariff.js';
 import type { ElectricityConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { electricityGauges } from '../metrics.js';
@@ -167,10 +167,7 @@ export class ElectricityCollector {
 
   /** ILS/kWh to price the given day at, or null if no pricing is configured. */
   private effectiveRate(dailyDateYmd: string): number | null {
-    if (this.tariffSchedule) {
-      return blendedRateForDay(this.tariffSchedule, parseYmdNoon(dailyDateYmd));
-    }
-    return this.config.pricePerKwh;
+    return electricityEffectiveRate(this.config, this.tariffSchedule, parseYmdNoon(dailyDateYmd));
   }
 
   private scheduleNext(): void {

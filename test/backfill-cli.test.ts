@@ -6,7 +6,7 @@ import { test } from 'node:test';
 
 import { chunk, collectElectricity, collectWater, parseArgs, resolveRange } from '../src/backfill-cli.js';
 import type { ElectricityConfig, WaterConfig } from '../src/config.js';
-import { blendedRateForDay, tieredWaterCost, waterTariffThreshold } from '../src/cost/tariff.js';
+import { blendedRateForDay, TariffScheduleError, tieredWaterCost, waterTariffThreshold } from '../src/cost/tariff.js';
 import { ReadingResolution } from '../src/electricity/iec-client.js';
 import type { Logger } from '../src/logger.js';
 import { dateToEpochSeconds, isoDate, parseYmdNoon, shiftDays } from '../src/time/day.js';
@@ -559,4 +559,32 @@ test('collectElectricity in schedule mode backfills the effective-rate and cost 
       [dateToEpochSeconds('2026-01-02') * 1000, 2 * expectedRate('2026-01-02')],
     ]),
   );
+});
+
+test('collectElectricity validates an invalid tariff schedule before making any IEC network call, not after', async () => {
+  let fetchCalled = false;
+  globalThis.fetch = (async () => {
+    fetchCalled = true;
+    throw new Error('collectElectricity must not reach the network with an invalid tariff schedule');
+  }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const scheduleFile = join(dataDir, 'schedule.json');
+  writeFileSync(scheduleFile, 'not valid json');
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'schedule',
+    pricePerKwh: null,
+    tariffScheduleFile: scheduleFile,
+  };
+
+  await assert.rejects(() => collectElectricity(config, '2026-01-01', '2026-01-02', SILENT_LOG), TariffScheduleError);
+  assert.equal(fetchCalled, false, 'a bad schedule file must fail before spending any IEC API quota, like the live collector does at boot');
 });

@@ -27,11 +27,11 @@ import { fileURLToPath } from 'node:url';
 
 import { type AppConfig, type ElectricityConfig, loadConfig, type WaterConfig } from './config.js';
 import {
-  blendedRateForDay,
   effectiveWaterRate,
+  electricityEffectiveRate,
   loadTariffSchedule,
   type TariffSchedule,
-  tieredWaterCost,
+  waterCostEstimate,
   waterTariffThreshold,
 } from './cost/tariff.js';
 import { IecClient, ReadingResolution } from './electricity/iec-client.js';
@@ -156,6 +156,12 @@ export async function collectWater(config: WaterConfig, from: string, to: string
   // month's cumulative, they just aren't written as their own daily points.
   const fetchFrom = enumerateMonthStarts(from, to)[0] ?? from;
 
+  // Depends only on `config`, never on the date or a day's cumulative
+  // consumption, so it's computed once up front rather than on every
+  // iteration of the (potentially long) day loop below.
+  const tariffTiers = config.tariffMode === 'tiered' ? config.tariffTiers : null;
+  const tariffThreshold = tariffTiers ? waterTariffThreshold(tariffTiers) : null;
+
   const points: SamplePoint[] = [];
   for (const meter of meters) {
     const labels = { meter_id: String(meter.meterCount), meter_serial: typeof meter.meterId === 'string' ? meter.meterId : '' };
@@ -217,18 +223,18 @@ export async function collectWater(config: WaterConfig, from: string, to: string
         const timestampMs = dateToEpochSeconds(day.date) * 1000;
         points.push({ metric: 'israel_utility_water_consumption_monthly_liters', labels, timestampMs, value: cumulative * 1000 });
 
-        if (config.tariffMode === 'tiered' && config.tariffTiers) {
+        if (tariffTiers && tariffThreshold !== null) {
           points.push({
             metric: 'israel_utility_water_tariff_threshold_cubic_meters',
             labels,
             timestampMs,
-            value: waterTariffThreshold(config.tariffTiers),
+            value: tariffThreshold,
           });
           points.push({
             metric: 'israel_utility_water_effective_rate_ils_per_cubic_meter',
             labels,
             timestampMs,
-            value: effectiveWaterRate(config.tariffTiers, cumulative),
+            value: effectiveWaterRate(tariffTiers, cumulative),
           });
         }
         const cost = waterCostEstimate(config, cumulative);
@@ -241,15 +247,14 @@ export async function collectWater(config: WaterConfig, from: string, to: string
   return points;
 }
 
-/** Mirrors `WaterCollector`'s private `costEstimate` — ILS cost of `consumptionCubicMeters` under the configured tariff, or null if unpriced. */
-function waterCostEstimate(config: WaterConfig, consumptionCubicMeters: number): number | null {
-  if (config.tariffMode === 'tiered' && config.tariffTiers) {
-    return tieredWaterCost(config.tariffTiers, consumptionCubicMeters);
-  }
-  return config.pricePerCubicMeter !== null ? consumptionCubicMeters * config.pricePerCubicMeter : null;
-}
-
 export async function collectElectricity(config: ElectricityConfig, from: string, to: string, log: Logger): Promise<SamplePoint[]> {
+  // Loaded/validated before any network call, exactly like the live
+  // collector's constructor does it — a bad schedule file must fail fast,
+  // not after already spending IEC API quota on a run that was going to be
+  // discarded anyway.
+  const tariffSchedule: TariffSchedule | null =
+    config.tariffMode === 'schedule' && config.tariffScheduleFile ? loadTariffSchedule(config.tariffScheduleFile) : null;
+
   const client = new IecClient(config.israeliId, { log: (msg) => log.debug(`Electricity backfill: ${msg}`) });
   try {
     await client.loadTokenFromFile(config.tokenFile);
@@ -268,12 +273,6 @@ export async function collectElectricity(config: ElectricityConfig, from: string
     throw new Error('No contracts found for this IEC account.');
   }
   const labels = { contract_id: contract.contractId };
-
-  // Loaded once up front (not per-day) and, like the live collector, fails
-  // the whole run if the schedule file is invalid rather than silently
-  // skipping pricing.
-  const tariffSchedule: TariffSchedule | null =
-    config.tariffMode === 'schedule' && config.tariffScheduleFile ? loadTariffSchedule(config.tariffScheduleFile) : null;
 
   // DAILY resolution does not return a range at all — `fromDate` selects a
   // single calendar day and the response is that day's 15-minute-interval
@@ -341,13 +340,14 @@ export async function collectElectricity(config: ElectricityConfig, from: string
       value: timestampMs / 1000,
     });
 
-    const rate = tariffSchedule ? blendedRateForDay(tariffSchedule, parseYmdNoon(date)) : config.pricePerKwh;
-    if (rate !== null) {
-      if (tariffSchedule) {
-        points.push({ metric: 'israel_utility_electricity_effective_rate_ils_per_kwh', labels, timestampMs, value: rate });
-      }
-      points.push({ metric: 'israel_utility_electricity_cost_estimate_ils', labels, timestampMs, value: consumption * rate });
+    const rate = electricityEffectiveRate(config, tariffSchedule, parseYmdNoon(date));
+    if (rate === null) {
+      continue;
     }
+    if (tariffSchedule) {
+      points.push({ metric: 'israel_utility_electricity_effective_rate_ils_per_kwh', labels, timestampMs, value: rate });
+    }
+    points.push({ metric: 'israel_utility_electricity_cost_estimate_ils', labels, timestampMs, value: consumption * rate });
   }
 
   return points;
