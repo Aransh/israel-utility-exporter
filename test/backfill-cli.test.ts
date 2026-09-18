@@ -6,9 +6,10 @@ import { test } from 'node:test';
 
 import { chunk, collectElectricity, collectWater, parseArgs, resolveRange } from '../src/backfill-cli.js';
 import type { ElectricityConfig, WaterConfig } from '../src/config.js';
+import { blendedRateForDay, TariffScheduleError, tieredWaterCost, waterTariffThreshold } from '../src/cost/tariff.js';
 import { ReadingResolution } from '../src/electricity/iec-client.js';
 import type { Logger } from '../src/logger.js';
-import { dateToEpochSeconds, isoDate, shiftDays } from '../src/time/day.js';
+import { dateToEpochSeconds, isoDate, parseYmdNoon, shiftDays } from '../src/time/day.js';
 
 const SILENT_LOG: Logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
 
@@ -393,4 +394,197 @@ test('collectElectricity skips a period with an unparseable interval instead of 
   assert.equal(dailyPoints.length, 1, 'the malformed-interval period must be skipped, not turned into a NaN-timestamped sample');
   assert.ok(dailyPoints.every((p) => Number.isFinite(p.timestampMs)));
   assert.equal(dailyPoints[0]!.timestampMs, dateToEpochSeconds('2026-01-02') * 1000);
+});
+
+test('collectWater in tiered mode also backfills the threshold, effective rate and cost gauges from the running monthly total', async () => {
+  globalThis.fetch = fakeWaterPortal() as typeof fetch;
+
+  const tariffTiers = { normalRatePerCubicMeter: 5, excessRatePerCubicMeter: 10, householdSize: 1, allowancePerPersonCubicMeters: 3.5 };
+  const config: WaterConfig = {
+    email: 'a@example.com',
+    password: 'x',
+    pollIntervalMs: 60_000,
+    weeklyWindow: 'sunday',
+    tariffMode: 'tiered',
+    pricePerCubicMeter: null,
+    tariffTiers,
+  };
+  const points = await collectWater(config, '2026-01-01', '2026-01-03', SILENT_LOG);
+
+  // fakeWaterPortal reports 1 m3/day, so the running monthly total is 1, 2, 3 m3 — all below the 7 m3 threshold.
+  const thresholdPoints = points.filter((p) => p.metric === 'israel_utility_water_tariff_threshold_cubic_meters');
+  assert.equal(thresholdPoints.length, 3);
+  assert.ok(thresholdPoints.every((p) => p.value === waterTariffThreshold(tariffTiers)));
+
+  const ratePoints = points.filter((p) => p.metric === 'israel_utility_water_effective_rate_ils_per_cubic_meter');
+  assert.deepEqual(
+    new Map(ratePoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds('2026-01-01') * 1000, 5],
+      [dateToEpochSeconds('2026-01-02') * 1000, 5],
+      [dateToEpochSeconds('2026-01-03') * 1000, 5],
+    ]),
+  );
+
+  const costPoints = points.filter((p) => p.metric === 'israel_utility_water_cost_estimate_ils');
+  assert.deepEqual(
+    new Map(costPoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds('2026-01-01') * 1000, tieredWaterCost(tariffTiers, 1)],
+      [dateToEpochSeconds('2026-01-02') * 1000, tieredWaterCost(tariffTiers, 2)],
+      [dateToEpochSeconds('2026-01-03') * 1000, tieredWaterCost(tariffTiers, 3)],
+    ]),
+  );
+});
+
+test('collectWater in flat mode backfills the cost gauge but not the tiered-only threshold/rate gauges', async () => {
+  globalThis.fetch = fakeWaterPortal() as typeof fetch;
+
+  const config: WaterConfig = {
+    email: 'a@example.com',
+    password: 'x',
+    pollIntervalMs: 60_000,
+    weeklyWindow: 'sunday',
+    tariffMode: 'flat',
+    pricePerCubicMeter: 3,
+    tariffTiers: null,
+  };
+  const points = await collectWater(config, '2026-01-01', '2026-01-02', SILENT_LOG);
+
+  assert.equal(points.filter((p) => p.metric === 'israel_utility_water_tariff_threshold_cubic_meters').length, 0);
+  assert.equal(points.filter((p) => p.metric === 'israel_utility_water_effective_rate_ils_per_cubic_meter').length, 0);
+
+  const costPoints = points.filter((p) => p.metric === 'israel_utility_water_cost_estimate_ils');
+  assert.deepEqual(
+    new Map(costPoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds('2026-01-01') * 1000, 3],
+      [dateToEpochSeconds('2026-01-02') * 1000, 6],
+    ]),
+  );
+});
+
+test('collectWater backfills no cost gauge at all when unpriced', async () => {
+  globalThis.fetch = fakeWaterPortal() as typeof fetch;
+
+  const config: WaterConfig = {
+    email: 'a@example.com',
+    password: 'x',
+    pollIntervalMs: 60_000,
+    weeklyWindow: 'sunday',
+    tariffMode: 'flat',
+    pricePerCubicMeter: null,
+    tariffTiers: null,
+  };
+  const points = await collectWater(config, '2026-01-01', '2026-01-02', SILENT_LOG);
+
+  assert.equal(points.filter((p) => p.metric === 'israel_utility_water_cost_estimate_ils').length, 0);
+});
+
+test('collectElectricity in flat mode backfills the cost gauge from a fixed price per kWh, without an effective-rate gauge', async () => {
+  globalThis.fetch = fakeIecMonthlyWithDailyBreakdown({ '2026-01-01': 1, '2026-01-02': 2, '2026-01-03': 3 }, 6) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'flat',
+    pricePerKwh: 2,
+    tariffScheduleFile: null,
+  };
+
+  const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG);
+
+  assert.equal(points.filter((p) => p.metric === 'israel_utility_electricity_effective_rate_ils_per_kwh').length, 0);
+
+  const costPoints = points.filter((p) => p.metric === 'israel_utility_electricity_cost_estimate_ils');
+  assert.deepEqual(
+    new Map(costPoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds('2026-01-01') * 1000, 2],
+      [dateToEpochSeconds('2026-01-02') * 1000, 4],
+      [dateToEpochSeconds('2026-01-03') * 1000, 6],
+    ]),
+  );
+});
+
+test('collectElectricity in schedule mode backfills the effective-rate and cost gauges via blendedRateForDay', async () => {
+  globalThis.fetch = fakeIecMonthlyWithDailyBreakdown({ '2026-01-01': 1, '2026-01-02': 2 }, 3) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const scheduleFile = join(dataDir, 'schedule.json');
+  const schedule = {
+    baseRatePerKwh: 2,
+    windows: [{ days: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'], start: '17:00', end: '23:00', discountPercent: 50 }],
+  };
+  writeFileSync(scheduleFile, JSON.stringify(schedule));
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'schedule',
+    pricePerKwh: null,
+    tariffScheduleFile: scheduleFile,
+  };
+
+  const points = await collectElectricity(config, '2026-01-01', '2026-01-02', SILENT_LOG);
+
+  const expectedRate = (date: string) => blendedRateForDay({ currency: 'ILS', ...schedule }, parseYmdNoon(date));
+
+  const ratePoints = points.filter((p) => p.metric === 'israel_utility_electricity_effective_rate_ils_per_kwh');
+  assert.deepEqual(
+    new Map(ratePoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds('2026-01-01') * 1000, expectedRate('2026-01-01')],
+      [dateToEpochSeconds('2026-01-02') * 1000, expectedRate('2026-01-02')],
+    ]),
+  );
+
+  const costPoints = points.filter((p) => p.metric === 'israel_utility_electricity_cost_estimate_ils');
+  assert.deepEqual(
+    new Map(costPoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds('2026-01-01') * 1000, 1 * expectedRate('2026-01-01')],
+      [dateToEpochSeconds('2026-01-02') * 1000, 2 * expectedRate('2026-01-02')],
+    ]),
+  );
+});
+
+test('collectElectricity validates an invalid tariff schedule before making any IEC network call, not after', async () => {
+  let fetchCalled = false;
+  globalThis.fetch = (async () => {
+    fetchCalled = true;
+    throw new Error('collectElectricity must not reach the network with an invalid tariff schedule');
+  }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const scheduleFile = join(dataDir, 'schedule.json');
+  writeFileSync(scheduleFile, 'not valid json');
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'schedule',
+    pricePerKwh: null,
+    tariffScheduleFile: scheduleFile,
+  };
+
+  await assert.rejects(() => collectElectricity(config, '2026-01-01', '2026-01-02', SILENT_LOG), TariffScheduleError);
+  assert.equal(fetchCalled, false, 'a bad schedule file must fail before spending any IEC API quota, like the live collector does at boot');
 });

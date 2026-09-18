@@ -377,12 +377,24 @@ node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, 
   Set `REMOTE_WRITE_EXTRA_LABELS` to whatever your scrape config uses, e.g.
   for the `job_name`/target in `prometheus/prometheus.yml.example`:
   `REMOTE_WRITE_EXTRA_LABELS=job=israel-utility-exporter,instance=israel-utility-exporter:9877`.
-- Only **raw numbers the utility APIs report directly** are backfilled: daily
-  consumption for both utilities, weekly consumption for water (electricity
-  has no weekly metric), and monthly consumption for both. No cost/rate
-  estimates are backfilled — those are computed locally from today's tariff
-  config and would misrepresent a historical day priced under a different
-  rate.
+- Backfills the **raw numbers the utility APIs report directly** (daily
+  consumption for both utilities, weekly consumption for water — electricity
+  has no weekly metric — and monthly consumption for both), plus, wherever a
+  tariff is configured, the **cost/rate metrics derived from them**
+  (`israel_utility_water_cost_estimate_ils`,
+  `israel_utility_water_tariff_threshold_cubic_meters`,
+  `israel_utility_water_effective_rate_ils_per_cubic_meter`,
+  `israel_utility_electricity_cost_estimate_ils`,
+  `israel_utility_electricity_effective_rate_ils_per_kwh`). Those are priced
+  with **today's tariff config**, the same way the live collectors always
+  price the current month/day — there's no record of what a historical day's
+  rate actually was, so if your tariff (household size, per-m3 rate,
+  time-of-use schedule, …) changed since the period you're backfilling, the
+  resulting cost/rate samples for that period will reflect the current
+  config, not the one that actually applied then. The water forecast metrics
+  (`israel_utility_water_consumption_forecast_liters` and
+  `israel_utility_water_cost_estimate_forecast_ils`) are never backfilled —
+  a forecast is inherently forward-looking and has no historical equivalent.
 - Monthly consumption is written as a **running month-to-date total, one
   sample per day** — the same thing the live gauge shows if scraped that
   day — not a single point on the 1st carrying the whole month's eventual

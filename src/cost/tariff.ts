@@ -209,6 +209,51 @@ export function effectiveWaterRate(tiers: WaterTariffTiers, consumptionCubicMete
   return tieredWaterCost(tiers, consumptionCubicMeters) / consumptionCubicMeters;
 }
 
+/**
+ * Shaped like the slice of `WaterConfig` that pricing actually needs — kept
+ * local (rather than imported from config.ts) to avoid a circular import,
+ * since config.ts already imports `WaterTariffTiers` from this file.
+ */
+export interface WaterPricingConfig {
+  tariffMode: 'flat' | 'tiered';
+  tariffTiers: WaterTariffTiers | null;
+  pricePerCubicMeter: number | null;
+}
+
+/**
+ * ILS cost of `consumptionCubicMeters` under `config`'s tariff, or null if
+ * unpriced (flat mode with no `pricePerCubicMeter` configured). Shared by the
+ * live water collector and the backfill CLI so a future change to how a
+ * reading gets priced can't update one and silently miss the other.
+ */
+export function waterCostEstimate(config: WaterPricingConfig, consumptionCubicMeters: number): number | null {
+  if (config.tariffMode === 'tiered' && config.tariffTiers) {
+    return tieredWaterCost(config.tariffTiers, consumptionCubicMeters);
+  }
+  return config.pricePerCubicMeter !== null ? consumptionCubicMeters * config.pricePerCubicMeter : null;
+}
+
+/** Shaped like the slice of `ElectricityConfig` that pricing actually needs — same circular-import reasoning as `WaterPricingConfig`. */
+export interface ElectricityPricingConfig {
+  pricePerKwh: number | null;
+}
+
+/**
+ * ILS/kWh to price `date` at: `schedule`'s duration-weighted blended rate if
+ * a schedule is configured, else `config`'s flat `pricePerKwh` (null if
+ * unpriced). Shared by the live electricity collector and the backfill CLI.
+ */
+export function electricityEffectiveRate(
+  config: ElectricityPricingConfig,
+  schedule: TariffSchedule | null,
+  date: Date,
+): number | null {
+  if (schedule) {
+    return blendedRateForDay(schedule, date);
+  }
+  return config.pricePerKwh;
+}
+
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
