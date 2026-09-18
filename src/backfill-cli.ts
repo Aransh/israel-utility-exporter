@@ -1,11 +1,19 @@
 #!/usr/bin/env node
 /**
- * Backfills historical daily/weekly/monthly consumption into a Prometheus
- * remote_write receiver, for data older than either collector's live
- * lookback window (or predating the exporter's first deployment). Only raw
- * numbers the utility APIs report directly are backfilled — no cost/rate
- * estimates, since those are locally computed from today's tariff config and
- * would misrepresent a historical day.
+ * Backfills historical daily/weekly/monthly consumption — plus, where a
+ * tariff is configured, the cost/rate metrics derived from it — into a
+ * Prometheus remote_write receiver, for data older than either collector's
+ * live lookback window (or predating the exporter's first deployment).
+ *
+ * Cost/rate figures are computed with *today's* tariff config (there is no
+ * record of what a historical day's rate actually was), the same way the
+ * live collectors always price the current month/day. If your tariff
+ * (household size, per-m3 rate, time-of-use schedule, …) changed since the
+ * period being backfilled, the resulting cost/rate samples for that period
+ * will reflect the current config, not the one that actually applied then.
+ * There's no historical equivalent for the water forecast metrics
+ * (`*_forecast_liters`/`*_cost_estimate_forecast_ils`) — a forecast is
+ * inherently forward-looking — so those are never backfilled.
  *
  *   node dist/backfill-cli.js --service water|electricity|all \
  *     (--days 90 | --from 2026-01-01 --to 2026-03-01) [--dry-run]
@@ -18,6 +26,14 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { type AppConfig, type ElectricityConfig, loadConfig, type WaterConfig } from './config.js';
+import {
+  blendedRateForDay,
+  effectiveWaterRate,
+  loadTariffSchedule,
+  type TariffSchedule,
+  tieredWaterCost,
+  waterTariffThreshold,
+} from './cost/tariff.js';
 import { IecClient, ReadingResolution } from './electricity/iec-client.js';
 import { createLogger, type Logger } from './logger.js';
 import { remoteWrite, type RemoteWriteSettings } from './remote-write/client.js';
@@ -200,10 +216,37 @@ export async function collectWater(config: WaterConfig, from: string, to: string
         }
         const timestampMs = dateToEpochSeconds(day.date) * 1000;
         points.push({ metric: 'israel_utility_water_consumption_monthly_liters', labels, timestampMs, value: cumulative * 1000 });
+
+        if (config.tariffMode === 'tiered' && config.tariffTiers) {
+          points.push({
+            metric: 'israel_utility_water_tariff_threshold_cubic_meters',
+            labels,
+            timestampMs,
+            value: waterTariffThreshold(config.tariffTiers),
+          });
+          points.push({
+            metric: 'israel_utility_water_effective_rate_ils_per_cubic_meter',
+            labels,
+            timestampMs,
+            value: effectiveWaterRate(config.tariffTiers, cumulative),
+          });
+        }
+        const cost = waterCostEstimate(config, cumulative);
+        if (cost !== null) {
+          points.push({ metric: 'israel_utility_water_cost_estimate_ils', labels, timestampMs, value: cost });
+        }
       }
     }
   }
   return points;
+}
+
+/** Mirrors `WaterCollector`'s private `costEstimate` — ILS cost of `consumptionCubicMeters` under the configured tariff, or null if unpriced. */
+function waterCostEstimate(config: WaterConfig, consumptionCubicMeters: number): number | null {
+  if (config.tariffMode === 'tiered' && config.tariffTiers) {
+    return tieredWaterCost(config.tariffTiers, consumptionCubicMeters);
+  }
+  return config.pricePerCubicMeter !== null ? consumptionCubicMeters * config.pricePerCubicMeter : null;
 }
 
 export async function collectElectricity(config: ElectricityConfig, from: string, to: string, log: Logger): Promise<SamplePoint[]> {
@@ -225,6 +268,12 @@ export async function collectElectricity(config: ElectricityConfig, from: string
     throw new Error('No contracts found for this IEC account.');
   }
   const labels = { contract_id: contract.contractId };
+
+  // Loaded once up front (not per-day) and, like the live collector, fails
+  // the whole run if the schedule file is invalid rather than silently
+  // skipping pricing.
+  const tariffSchedule: TariffSchedule | null =
+    config.tariffMode === 'schedule' && config.tariffScheduleFile ? loadTariffSchedule(config.tariffScheduleFile) : null;
 
   // DAILY resolution does not return a range at all — `fromDate` selects a
   // single calendar day and the response is that day's 15-minute-interval
@@ -291,6 +340,14 @@ export async function collectElectricity(config: ElectricityConfig, from: string
       timestampMs,
       value: timestampMs / 1000,
     });
+
+    const rate = tariffSchedule ? blendedRateForDay(tariffSchedule, parseYmdNoon(date)) : config.pricePerKwh;
+    if (rate !== null) {
+      if (tariffSchedule) {
+        points.push({ metric: 'israel_utility_electricity_effective_rate_ils_per_kwh', labels, timestampMs, value: rate });
+      }
+      points.push({ metric: 'israel_utility_electricity_cost_estimate_ils', labels, timestampMs, value: consumption * rate });
+    }
   }
 
   return points;

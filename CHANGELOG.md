@@ -11,10 +11,22 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
-## [0.4.1] - 2026-09-18
+## [0.5.0] - 2026-09-18
 
 ### Added
 
+- `backfill-cli.js` now also backfills the **cost/rate metrics** derived from
+  a configured tariff — `israel_utility_water_cost_estimate_ils`,
+  `israel_utility_water_tariff_threshold_cubic_meters`,
+  `israel_utility_water_effective_rate_ils_per_cubic_meter`,
+  `israel_utility_electricity_cost_estimate_ils`, and
+  `israel_utility_electricity_effective_rate_ils_per_kwh` — not just the raw
+  consumption numbers the utility APIs report directly. Priced with today's
+  tariff config, the same way the live collectors price the current
+  month/day; see the README's "Historical data backfill" section for the
+  caveat this implies for a historical period whose tariff has since
+  changed. The water forecast metrics have no historical equivalent and are
+  still never backfilled.
 - The water dashboard's "Weekly / Monthly Water Consumption vs Forecast"
   panel now plots a dashed red "Monthly Limit" line
   (`israel_utility_water_tariff_threshold_cubic_meters`), only present in
