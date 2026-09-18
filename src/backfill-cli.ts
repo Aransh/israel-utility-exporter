@@ -134,12 +134,21 @@ export async function collectWater(config: WaterConfig, from: string, to: string
   await client.login();
   const meters = await client.listMeters();
 
+  // Fetched from the start of the calendar month containing `from`, not
+  // `from` itself, so a month's running total (below) is correct even when
+  // `from` starts mid-month — days before `from` still contribute to that
+  // month's cumulative, they just aren't written as their own daily points.
+  const fetchFrom = enumerateMonthStarts(from, to)[0] ?? from;
+
   const points: SamplePoint[] = [];
   for (const meter of meters) {
     const labels = { meter_id: String(meter.meterCount), meter_serial: typeof meter.meterId === 'string' ? meter.meterId : '' };
-    const daily = await client.dailyConsumptionRange(meter.meterCount, from, to);
+    const daily = await client.dailyConsumptionRange(meter.meterCount, fetchFrom, to);
 
     for (const day of daily) {
+      if (day.date < from) {
+        continue; // fetched only to support the monthly running total below, not itself requested
+      }
       const timestampMs = dateToEpochSeconds(day.date) * 1000;
       points.push({ metric: 'israel_utility_water_consumption_daily_liters', labels, timestampMs, value: day.value * 1000 });
       points.push({
@@ -174,13 +183,24 @@ export async function collectWater(config: WaterConfig, from: string, to: string
       points.push({ metric: 'israel_utility_water_consumption_weekly_days_counted', labels, timestampMs, value: counted });
     }
 
+    // A single point stamped at the 1st carrying the *whole* month's
+    // eventual total would misrepresent every earlier day (and isn't even
+    // visible unless the viewed time range happens to reach back to that
+    // date). Instead this mirrors what the live "month to date" gauge would
+    // have shown if scraped each day: a running total, one sample per day,
+    // derived from the same daily figures already fetched above.
     for (const monthStart of enumerateMonthStarts(from, to)) {
-      const monthly = await client.monthlyConsumption(meter.meterCount, monthStart);
-      if (monthly === null) {
-        continue;
+      const monthKey = monthStart.slice(0, 7);
+      const monthDays = daily.filter((day) => day.date.slice(0, 7) === monthKey).sort((a, b) => a.date.localeCompare(b.date));
+      let cumulative = 0;
+      for (const day of monthDays) {
+        cumulative += day.value;
+        if (day.date < from || day.date > to) {
+          continue;
+        }
+        const timestampMs = dateToEpochSeconds(day.date) * 1000;
+        points.push({ metric: 'israel_utility_water_consumption_monthly_liters', labels, timestampMs, value: cumulative * 1000 });
       }
-      const timestampMs = dateToEpochSeconds(monthStart) * 1000;
-      points.push({ metric: 'israel_utility_water_consumption_monthly_liters', labels, timestampMs, value: monthly * 1000 });
     }
   }
   return points;
@@ -219,6 +239,8 @@ export async function collectElectricity(config: ElectricityConfig, from: string
   const points: SamplePoint[] = [];
   for (const monthStart of enumerateMonthStarts(from, to)) {
     const monthly = await client.getConsumption(contract.contractId, ReadingResolution.MONTHLY, monthStart);
+    const monthKey = monthStart.slice(0, 7);
+    const monthDays: Array<{ date: string; consumption: number }> = [];
 
     for (const period of monthly.periods) {
       // `interval` is a true UTC timestamp (e.g. "...T21:00:00+00:00"); in a
@@ -231,15 +253,32 @@ export async function collectElectricity(config: ElectricityConfig, from: string
         continue; // an unparseable interval must never produce a NaN sample timestamp
       }
       const date = isoDate(parsedInterval);
+      if (date.slice(0, 7) === monthKey) {
+        monthDays.push({ date, consumption: period.consumption });
+      }
+      if (date >= from && date <= to) {
+        dailyByDate.set(date, period.consumption);
+      }
+    }
+
+    // A single point stamped at the 1st carrying the *whole* month's
+    // eventual total would misrepresent every earlier day (and isn't even
+    // visible unless the viewed time range happens to reach back to that
+    // date). Instead this mirrors what the live "month to date" gauge would
+    // have shown if scraped each day: a running total, one sample per day.
+    // Needs every day of the month up to `to`, even ones before `from` if
+    // `from` starts mid-month — MONTHLY already returns the whole month
+    // (or month-to-date) regardless of the requested `fromDate`'s day —
+    // but only days within [from, to] are actually written.
+    monthDays.sort((a, b) => a.date.localeCompare(b.date));
+    let cumulative = 0;
+    for (const { date, consumption } of monthDays) {
+      cumulative += consumption;
       if (date < from || date > to) {
         continue;
       }
-      dailyByDate.set(date, period.consumption);
-    }
-
-    if (monthly.totalForPeriod !== null) {
-      const timestampMs = dateToEpochSeconds(monthStart) * 1000;
-      points.push({ metric: 'israel_utility_electricity_consumption_monthly_kwh', labels, timestampMs, value: monthly.totalForPeriod });
+      const timestampMs = dateToEpochSeconds(date) * 1000;
+      points.push({ metric: 'israel_utility_electricity_consumption_monthly_kwh', labels, timestampMs, value: cumulative });
     }
   }
 

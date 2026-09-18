@@ -11,6 +11,24 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-09-18
+
+### Fixed
+
+- Backfilled monthly consumption is now a **running month-to-date total,
+  one sample per day**, instead of a single point on the 1st carrying the
+  whole month's eventual total. The old approach misrepresented every day
+  before the month's end (a query on, say, the 5th would have shown the
+  full month's final number, not month-to-date-so-far) and was also easy to
+  mistake for missing data: one point every ~30 days only shows up if a
+  dashboard's time range happens to reach back to that exact date. Derived
+  from the same per-day data already fetched for the daily figure — for
+  water this widens the daily fetch to start from the 1st of the month
+  containing `--from` (so a mid-month start still has the whole month's
+  earlier days to sum), and drops the separate `/consumption/monthly` call
+  entirely; for electricity it reuses the daily breakdown already inside
+  the `MONTHLY` resolution response instead of a single `totalForPeriod`.
+
 ## [0.3.3] - 2026-09-18
 
 ### Fixed
@@ -168,7 +186,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.0...v0.3.1
