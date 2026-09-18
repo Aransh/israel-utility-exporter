@@ -12,6 +12,7 @@ import {
   parseArgs,
   reconstructElectricityMeterReading,
   reconstructMeterReadings,
+  resolveIncludeEstimated,
   resolveRange,
 } from '../src/backfill-cli.js';
 import type { ElectricityConfig, WaterConfig } from '../src/config.js';
@@ -276,6 +277,30 @@ test('reconstructMeterReadings walks backward from the newest known day, subtrac
       ['2026-01-03', 100],
       ['2026-01-02', 97],
       ['2026-01-01', 95],
+    ]),
+  );
+});
+
+test('reconstructMeterReadings only returns readings within [from, to], even when the anchor is well after `to`', () => {
+  // today (the anchor) is days after the requested range — a real scenario, since water's
+  // anchor is always today's live reading regardless of how old the backfilled range is.
+  // Every day between the anchor and `to` still has to be walked to arrive at the right
+  // running total, but only [from, to] should come back.
+  const dailyConsumption = new Map([
+    ['2026-01-01', 1],
+    ['2026-01-02', 2],
+    ['2026-01-03', 3],
+    ['2026-01-04', 4],
+    ['2026-01-05', 5],
+    ['2026-01-06', 6],
+  ]);
+  const readings = reconstructMeterReadings(200, dailyConsumption, '2026-01-01', '2026-01-03', '2026-01-06', SILENT_LOG, '777');
+  assert.deepEqual(
+    new Map(readings.map((r) => [r.date, r.value])),
+    new Map([
+      ['2026-01-03', 185],
+      ['2026-01-02', 182],
+      ['2026-01-01', 180],
     ]),
   );
 });
@@ -610,9 +635,14 @@ test('reconstructElectricityMeterReading returns nothing without a dated reading
   assert.deepEqual(reconstructElectricityMeterReading(100, null, new Map(), '2026-01-01', '2026-01-03', SILENT_LOG, '900123456'), []);
 });
 
-test('reconstructElectricityMeterReading returns nothing when the dated reading is before the requested range', () => {
-  const readings = reconstructElectricityMeterReading(100, '2025-12-31', new Map(), '2026-01-01', '2026-01-03', SILENT_LOG, '900123456');
+test('reconstructElectricityMeterReading returns nothing and warns when the dated reading is before the requested range', () => {
+  const warnings: string[] = [];
+  const log: Logger = { ...SILENT_LOG, warn: (message) => warnings.push(message) };
+  const readings = reconstructElectricityMeterReading(100, '2025-12-31', new Map(), '2026-01-01', '2026-01-03', log, '900123456');
   assert.deepEqual(readings, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /900123456/);
+  assert.match(warnings[0]!, /2025-12-31/);
 });
 
 test('reconstructElectricityMeterReading stops at the first day with no published consumption instead of guessing', () => {
@@ -656,6 +686,16 @@ test('buildEstimatedReadingsPrompt names only the meter(s) actually being backfi
   const both = buildEstimatedReadingsPrompt(true, true);
   assert.match(both, /water meter reading/);
   assert.match(both, /electricity meter reading/);
+});
+
+test('resolveIncludeEstimated returns the explicit flag without prompting', async () => {
+  assert.equal(await resolveIncludeEstimated({ service: 'water', dryRun: false, includeEstimated: true }, true, false), true);
+  assert.equal(await resolveIncludeEstimated({ service: 'water', dryRun: false, includeEstimated: false }, true, false), false);
+});
+
+test('resolveIncludeEstimated defaults to false on a non-interactive terminal instead of prompting', async () => {
+  // The test runner's stdin is never a TTY, so this exercises the same branch a CI run hits.
+  assert.equal(await resolveIncludeEstimated({ service: 'water', dryRun: false, includeEstimated: undefined }, true, false), false);
 });
 
 test('collectWater in tiered mode also backfills the threshold, effective rate and cost gauges from the running monthly total', async () => {

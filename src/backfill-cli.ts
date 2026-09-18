@@ -398,6 +398,9 @@ export function reconstructElectricityMeterReading(
     return [];
   }
   if (periodEndReadingDate < from) {
+    log.warn(
+      `Electricity backfill: contract ${contractId}'s dated reading (${periodEndReadingDate}) is before the requested range; skipping meter-reading reconstruction for this month.`,
+    );
     return [];
   }
 
@@ -422,11 +425,18 @@ function walkBackwardFromAnchor(
   to: string,
   warn: (message: string) => void,
 ): Array<{ date: string; value: number }> {
+  // The anchor can be well after `to` (water's anchor is always today's live
+  // reading, regardless of how far in the past the requested range is), so
+  // walking back still has to cross every day between the anchor and `to` to
+  // arrive at the right running total — it just shouldn't allocate a result
+  // for any of those out-of-range days.
   const readings: Array<{ date: string; value: number }> = [];
   let runningTotal = anchorValue;
   let cursor = anchorDate;
   while (cursor >= from) {
-    readings.push({ date: cursor, value: runningTotal });
+    if (cursor <= to) {
+      readings.push({ date: cursor, value: runningTotal });
+    }
     const consumption = dailyConsumption.get(cursor);
     if (consumption === undefined) {
       warn(`reading reconstruction stopped at ${cursor} — no published consumption before that date.`);
@@ -440,7 +450,7 @@ function walkBackwardFromAnchor(
     runningTotal = next;
     cursor = shiftDays(cursor, -1);
   }
-  return readings.filter((reading) => reading.date <= to);
+  return readings;
 }
 
 export interface ElectricityBackfillOptions {
@@ -615,7 +625,7 @@ export function buildEstimatedReadingsPrompt(runWater: boolean, runElectricity: 
 }
 
 /** Resolves whether to include estimated readings: an explicit flag skips the prompt entirely. */
-async function resolveIncludeEstimated(args: CliArgs, runWater: boolean, runElectricity: boolean): Promise<boolean> {
+export async function resolveIncludeEstimated(args: CliArgs, runWater: boolean, runElectricity: boolean): Promise<boolean> {
   if (args.includeEstimated !== undefined) {
     return args.includeEstimated;
   }
