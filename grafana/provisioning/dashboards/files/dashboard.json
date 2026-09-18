@@ -94,7 +94,7 @@
       "gridPos": { "x": 0, "y": 7, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_consumption_daily_liters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "litre" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "litre", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     },
     {
@@ -108,7 +108,7 @@
         { "expr": "israel_utility_water_consumption_monthly_liters", "legendFormat": "Monthly (meter {{meter_id}})", "refId": "B" },
         { "expr": "israel_utility_water_consumption_forecast_liters", "legendFormat": "Forecast (meter {{meter_id}})", "refId": "C" }
       ],
-      "fieldConfig": { "defaults": { "unit": "litre" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "litre", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     },
     {
@@ -213,7 +213,7 @@
       "gridPos": { "x": 0, "y": 30, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_consumption_daily_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "kwatth" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "kwatth", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     },
     {
@@ -223,7 +223,7 @@
       "gridPos": { "x": 12, "y": 30, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_consumption_monthly_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "kwatth" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "kwatth", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     },
     {

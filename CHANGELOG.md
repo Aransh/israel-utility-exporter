@@ -28,6 +28,10 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   entry in the last hours of the UTC day to the previous calendar day in a
   timezone ahead of UTC (Israel included). Now parsed as a real instant and
   converted to the local calendar date.
+- The Grafana dashboard's daily/weekly/monthly consumption panels now set
+  `spanNulls`/`lineInterpolation: stepAfter`, so once-a-day backfilled
+  points render as a connected step chart instead of isolated dots (the
+  default "Connect null values: Never" doesn't bridge gaps that wide).
 
 ## [0.3.2] - 2026-09-18
 
