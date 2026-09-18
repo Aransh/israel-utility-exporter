@@ -9,14 +9,21 @@ rule_files:
 
 scrape_configs:
   - job_name: israel-utility-exporter
-    # Deliberately well under Prometheus's default 5m query lookback_delta,
-    # even though the exporter's own poll cadence is much slower (60-90m).
-    # Scraping /metrics only reads an in-memory value, so it's nearly free —
-    # but scrape_interval >= lookback_delta means any scrape that lands even
-    # a few seconds late leaves range queries (what Grafana Stat panels use
-    # by default) with no sample inside the lookback window, so a "current
-    # value" panel intermittently reads as unconfigured/no-data depending on
-    # exactly where the query's step lands. Keep this a few minutes below 5m.
+    # Deliberately well under Prometheus's default 5m query lookback_delta —
+    # unrelated to how often the exporter's own poll cadence updates a value
+    # (60-90m). A query (instant or range — what Grafana Stat panels use by
+    # default) evaluated at time T only finds a series if its newest sample
+    # is within lookback_delta of T; older than that, and the series reads
+    # as absent, even if the underlying value hasn't changed. So
+    # scrape_interval must stay comfortably below lookback_delta regardless
+    # of the data's real update cadence, or queries near "now" intermittently
+    # (or, if scrape_interval is set well above lookback_delta, almost
+    # always) find no sample. Scraping /metrics just reads an in-memory
+    # value, so it's nearly free — but if you want a slower scrape_interval
+    # for other reasons, raise Prometheus's own --query.lookback-delta
+    # startup flag to comfortably exceed it instead (that flag is global, so
+    # it also widens the blind spot for detecting a genuinely dead target on
+    # every other job on that Prometheus).
     scrape_interval: 1m
 
     static_configs:

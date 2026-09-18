@@ -39,7 +39,10 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   unconfigured/no-data, differently depending on the selected time range.
   Lowered to `1m`, and the cost-estimate/effective-rate Stat panels now
   query `instant: true` so they always reflect the latest value regardless
-  of the dashboard's selected time range.
+  of the dashboard's selected time range. This is unrelated to how slowly
+  the underlying water/electricity data itself updates — see "Behavior
+  worth knowing" in the README if you deliberately want a slower
+  `scrape_interval` than 5m.
 
 ## [0.3.3] - 2026-09-18
 

@@ -309,6 +309,21 @@ Plus `israel_utility_exporter_build_info{version="..."}`.
 - **Electricity data is inherently coarse.** IEC updates meter data roughly
   every 1-2 days regardless of how often you poll — `ELECTRICITY_POLL_INTERVAL_MINUTES`
   below ~60 gains nothing.
+- **Prometheus's `scrape_interval` is a different knob from either poll
+  interval above, and it has its own constraint that's unrelated to how
+  slowly the underlying data changes.** Prometheus's query engine only finds
+  a series if its newest sample is within `--query.lookback-delta` (default
+  5m) of the time being evaluated — older than that, and it's treated as
+  absent, even though the exporter would report the exact same value on the
+  next scrape. So `scrape_interval` must stay comfortably below 5m (the
+  default), or "current value" Stat panels can render as no-data/unconfigured
+  depending on exactly when they're queried — regardless of how rarely the
+  water/electricity poll cadence itself actually updates a value. Scraping
+  `/metrics` just reads an in-memory number, so it's nearly free; if you
+  deliberately want a slower `scrape_interval` anyway, raise Prometheus's
+  own `--query.lookback-delta` startup flag to comfortably exceed it instead
+  (that flag is global, so it also widens the blind spot for detecting a
+  genuinely dead target on every other job on that Prometheus).
 - **A rejected water password stops that collector, not the exporter.**
   Retrying a bad password on a timer risks the portal's login lockout, so it
   logs an error and stops polling water — fix `WATER_EMAIL`/`WATER_PASSWORD`
