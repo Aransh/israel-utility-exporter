@@ -316,31 +316,22 @@ node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, 
   Set `REMOTE_WRITE_EXTRA_LABELS` to whatever your scrape config uses, e.g.
   for the `job_name`/target in `prometheus/prometheus.yml.example`:
   `REMOTE_WRITE_EXTRA_LABELS=job=israel-utility-exporter,instance=israel-utility-exporter:9877`.
-  If you already backfilled without this set, see "Cleaning up a bad
-  backfill" below.
 - Only **raw numbers the utility APIs report directly** are backfilled: daily
   consumption for both utilities, weekly consumption for water (electricity
   has no weekly metric), and monthly consumption for both. No cost/rate
   estimates are backfilled — those are computed locally from today's tariff
   config and would misrepresent a historical day priced under a different
-  rate. The cumulative meter reading and water's month-end forecast are
-  **not backfillable at all**: both portals' APIs only ever report the
-  *current* value for these (no date parameter — `RymProClient`'s forecast
-  and last-read endpoints, and IEC's own `totalImport` figure, all reflect
-  "right now", not a requested historical date), so there's no historical
-  version of either to fetch.
+  rate.
 - The range you can actually backfill is **limited to whatever the underlying
   portal API itself still retains** — there's no way to go back further than
   that, regardless of `--days`/`--from`.
-- **Your remote_write receiver may silently drop old samples.** A receiver's
-  own retention window or backfill-age limit can reject samples outside it
-  while still reporting the batch as successful — the CLI has no way to see
-  this. VictoriaMetrics, for example, logs `cannot insert row with too small
-  timestamp ...; probably you need updating -retentionPeriod or
-  -maxBackfillAge` without failing the write. If a wide backfill looks
-  incomplete (e.g. only the most recent month or two of monthly data
-  actually shows up), check the receiver's own logs and widen its retention/
-  backfill-age settings rather than assuming the CLI missed something.
+- **Your remote_write receiver needs to be configured to accept historical
+  timestamps, or it can silently drop them while still reporting success.**
+  Prometheus's own remote-write receiver rejects out-of-order samples by
+  default (`--storage.tsdb.out-of-order-time-window` defaults to `0`) — set
+  it to cover your backfill range. Other receivers have their own retention/
+  backfill-age limits. If a wide backfill looks incomplete, check the
+  receiver's own logs/config rather than assuming the CLI missed something.
 - Electricity requires a token already saved by `npm run login:electricity` —
   IEC's OTP login can't be automated here.
 - Samples are timestamped at **local midnight** of the day they cover, the
@@ -365,32 +356,6 @@ node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, 
 See the [Configuration](#configuration) table for `REMOTE_WRITE_*` variables,
 including TLS options (custom CA, client cert, skip-verify) for a receiver on
 a private or self-signed certificate.
-
-### Cleaning up a bad backfill
-
-remote_write is idempotent for a *correct* re-run (same series, same values),
-but it's still writing to the same TSDB your live scrapes use — there's no
-separate "backfill store" to just wipe. If you backfilled before setting
-`REMOTE_WRITE_EXTRA_LABELS` (or with some other wrong label set), the badly
-labelled series need deleting before backfilling again, or you'll end up with
-both the old and the corrected series side by side.
-
-VictoriaMetrics exposes a Prometheus-compatible delete API for this. Since a
-missing label matches an empty string in PromQL selectors, you can target
-exactly the series that are missing `job`/`instance` (i.e. the ones this tool
-wrote before the fix) without touching correctly-labelled scraped data:
-
-```bash
-curl -X POST 'http://<your-victoriametrics-host>:8428/api/v1/admin/tsdb/delete_series' \
-  --data-urlencode 'match[]={__name__=~"israel_utility_.*",job="",instance=""}'
-```
-
-This requires admin endpoints to be enabled (`-search.enableAdminEndpoints`
-on VictoriaMetrics, depending on your version/deployment). Adjust the
-`match[]` selector for your own setup if you need to target something more
-specific. Prometheus itself has an equivalent
-[`/api/v1/admin/tsdb/delete_series`](https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series)
-(behind `--web.enable-admin-api`) if that's your remote_write receiver instead.
 
 ## Development
 

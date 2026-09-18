@@ -21,12 +21,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   `job`/`instance` label — those are assigned by Prometheus at scrape time,
   not carried in `/metrics` — so it landed as a *different* series from the
   one live scrapes produce for the same meter/contract, splitting the graph
-  in two. The README's "Historical data backfill" section now documents
-  this, plus a VictoriaMetrics command for cleaning up a backfill run that
-  predates this fix, and that a receiver's own retention/backfill-age limits
-  can silently drop old samples while still reporting success (observed
-  first-hand against VictoriaMetrics — see the new callouts in that
-  section).
+  in two. Parsed independently of `REMOTE_WRITE_URL` so a `--dry-run`
+  preview shows the same labels a real run would write.
 
 ## [0.3.1] - 2026-09-18
 
