@@ -13,6 +13,21 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [0.4.1] - 2026-09-18
 
+### Added
+
+- The water dashboard's "Weekly / Monthly Water Consumption vs Forecast"
+  panel now plots a dashed red "Monthly Limit" line
+  (`israel_utility_water_tariff_threshold_cubic_meters`), only present in
+  `WATER_TARIFF_MODE=tiered`. Drawn as a live query rather than a value
+  baked into the dashboard, so it always tracks whatever household
+  size/allowance is actually configured instead of going stale if that
+  changes.
+- `WaterMonthlyConsumptionOverBudget` in `prometheus/alerts.yml` now
+  compares directly against `israel_utility_water_tariff_threshold_cubic_meters`
+  in tiered mode instead of a hardcoded illustrative number, so it no
+  longer needs manual sizing to your household. It simply never fires in
+  flat mode, where that metric doesn't exist.
+
 ### Fixed
 
 - `waterTariffThreshold` multiplied `WATER_TARIFF_HOUSEHOLD_SIZE` directly by

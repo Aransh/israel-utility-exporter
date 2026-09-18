@@ -157,14 +157,32 @@
       "id": 6,
       "type": "timeseries",
       "title": "Weekly / Monthly Water Consumption vs Forecast",
+      "description": "The dashed red line is this month's subsidized-rate threshold — only present in WATER_TARIFF_MODE=tiered, and reflects whatever household size/allowance is currently configured (not a fixed number baked into the dashboard).",
       "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         { "expr": "israel_utility_water_consumption_weekly_liters", "legendFormat": "Weekly (meter {{meter_id}})", "refId": "A" },
         { "expr": "israel_utility_water_consumption_monthly_liters", "legendFormat": "Monthly (meter {{meter_id}})", "refId": "B" },
-        { "expr": "israel_utility_water_consumption_forecast_liters", "legendFormat": "Forecast (meter {{meter_id}})", "refId": "C" }
+        { "expr": "israel_utility_water_consumption_forecast_liters", "legendFormat": "Forecast (meter {{meter_id}})", "refId": "C" },
+        {
+          "expr": "israel_utility_water_tariff_threshold_cubic_meters * 1000",
+          "legendFormat": "Monthly Limit (meter {{meter_id}})",
+          "refId": "D"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "litre", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": { "unit": "litre", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "^Monthly Limit" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } },
+              { "id": "custom.fillOpacity", "value": 0 }
+            ]
+          }
+        ]
+      },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     },
     {

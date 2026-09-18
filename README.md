@@ -311,7 +311,10 @@ Plus `israel_utility_exporter_build_info{version="..."}`.
   - **Budget alert examples** (illustrative thresholds — size them to your
     own household before relying on them): daily/monthly consumption over a
     limit, based on Israel's ~400 L/person/day and ~3.5 m³ (3500 L)/person/month
-    subsidized-allocation guidance.
+    subsidized-allocation guidance. `WaterMonthlyConsumptionOverBudget` is the
+    exception — in `WATER_TARIFF_MODE=tiered` it compares directly against
+    `israel_utility_water_tariff_threshold_cubic_meters`, so it needs no
+    manual sizing.
 
 ## Behavior worth knowing
 
