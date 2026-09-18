@@ -226,7 +226,11 @@ export async function collectElectricity(config: ElectricityConfig, from: string
       // misattributes any entry landing in the last hours of the UTC day to
       // the wrong local calendar date. Parsing it and reading local getters
       // (via `isoDate`) gets the actual local day right.
-      const date = isoDate(new Date(period.interval));
+      const parsedInterval = new Date(period.interval);
+      if (!Number.isFinite(parsedInterval.getTime())) {
+        continue; // an unparseable interval must never produce a NaN sample timestamp
+      }
+      const date = isoDate(parsedInterval);
       if (date < from || date > to) {
         continue;
       }

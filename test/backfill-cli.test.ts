@@ -247,3 +247,54 @@ test('collectElectricity gets real daily data from the MONTHLY call, not a separ
   assert.equal(monthlyPoints[0]!.value, 6);
   assert.equal(monthlyPoints[0]!.timestampMs, dateToEpochSeconds('2026-01-01') * 1000);
 });
+
+test('collectElectricity skips a period with an unparseable interval instead of emitting a NaN timestamp', async () => {
+  globalThis.fetch = (async (url: string, init: RequestInit = {}): Promise<Response> => {
+    const u = new URL(url);
+    if (u.hostname !== 'iecapi.iec.co.il') {
+      return new Response('', { status: 404 });
+    }
+    if (u.pathname === '/api/customer') {
+      return json({ bpNumber: 'BP1' });
+    }
+    if (u.pathname === '/api/customer/contract/BP1') {
+      return json({ contracts: [{ contractId: CONTRACT_ID }] });
+    }
+    if (u.pathname === `/api/Device/${CONTRACT_ID}`) {
+      return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
+    }
+    if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
+      const body = JSON.parse(init.body as string) as { resolution: number };
+      if (body.resolution !== ReadingResolution.MONTHLY) {
+        return json({ meterList: [{ totalConsumptionForPeriod: 0 }] });
+      }
+      return json({
+        meterList: [
+          {
+            totalConsumptionForPeriod: 5,
+            periodConsumptions: [
+              { interval: 'not-a-real-date', consumption: 999 },
+              { interval: new Date(dateToEpochSeconds('2026-01-02') * 1000).toISOString(), consumption: 5 },
+            ],
+          },
+        ],
+      });
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+
+  const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG);
+
+  const dailyPoints = points.filter((p) => p.metric === 'israel_utility_electricity_consumption_daily_kwh');
+  assert.equal(dailyPoints.length, 1, 'the malformed-interval period must be skipped, not turned into a NaN-timestamped sample');
+  assert.ok(dailyPoints.every((p) => Number.isFinite(p.timestampMs)));
+  assert.equal(dailyPoints[0]!.timestampMs, dateToEpochSeconds('2026-01-02') * 1000);
+});
