@@ -23,6 +23,12 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   one live scrapes produce for the same meter/contract, splitting the graph
   in two. Parsed independently of `REMOTE_WRITE_URL` so a `--dry-run`
   preview shows the same labels a real run would write.
+- Electricity backfill now fetches daily consumption in `DAILY_LOOKBACK_DAYS`
+  chunks instead of one call spanning the whole range. IEC's
+  `RemoteReadingRange` doesn't reliably return one row per day for a wide
+  `fromDate` — observed in practice returning many rows all dated to
+  `fromDate` itself rather than the requested range, so a wide backfill
+  recovered close to nothing.
 
 ## [0.3.1] - 2026-09-18
 

@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { chunk, collectWater, parseArgs, resolveRange } from '../src/backfill-cli.js';
-import type { WaterConfig } from '../src/config.js';
+import { chunk, collectElectricity, collectWater, parseArgs, resolveRange } from '../src/backfill-cli.js';
+import type { ElectricityConfig, WaterConfig } from '../src/config.js';
+import { ReadingResolution } from '../src/electricity/iec-client.js';
 import type { Logger } from '../src/logger.js';
 import { dateToEpochSeconds, isoDate, shiftDays } from '../src/time/day.js';
 
 const SILENT_LOG: Logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
+
+function json(body: unknown): Response {
+  return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
 
 test('parseArgs defaults --service to "all" and accepts --from/--to', () => {
   const args = parseArgs(['--from', '2026-01-01', '--to', '2026-02-01']);
@@ -92,9 +100,6 @@ test('chunk splits an array into groups of the given size, including a short las
 const METER_COUNT = 777;
 
 function fakeWaterPortal() {
-  function json(body: unknown): Response {
-    return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
-  }
   return async (url: string): Promise<Response> => {
     const path = new URL(url).pathname;
     if (path === '/consumer/login') {
@@ -144,4 +149,83 @@ test('collectWater includes a rolling weekly bucket that starts exactly at `from
   // rolling windows start exactly at `from`, so both 7-day buckets
   // (01-07..01-13 and 01-14..01-20) are fully covered by the fetched range.
   assert.equal(weeklyPoints.length, 2);
+});
+
+const VALID_ID = '000000000';
+const CONTRACT_ID = '900123456';
+const METER_SERIAL = '12345678';
+const METER_CODE = 'AB1';
+
+function fakeIdToken(expiresInSeconds: number): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url');
+  const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
+  const payload = Buffer.from(JSON.stringify({ exp })).toString('base64url');
+  return `${header}.${payload}.sig`;
+}
+
+/**
+ * Reproduces the real IEC quirk found in production: a `RemoteReadingRange`
+ * DAILY call doesn't span from `fromDate` through today — every returned
+ * period is dated to `fromDate` itself, regardless of how far back it is.
+ */
+function fakeIecDailyCollapsedToFromDate() {
+  return async (url: string, init: RequestInit = {}): Promise<Response> => {
+    const u = new URL(url);
+    if (u.hostname !== 'iecapi.iec.co.il') {
+      return new Response('', { status: 404 });
+    }
+    if (u.pathname === '/api/customer') {
+      return json({ bpNumber: 'BP1' });
+    }
+    if (u.pathname === '/api/customer/contract/BP1') {
+      return json({ contracts: [{ contractId: CONTRACT_ID }] });
+    }
+    if (u.pathname === `/api/Device/${CONTRACT_ID}`) {
+      return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
+    }
+    if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
+      const body = JSON.parse(init.body as string) as { resolution: number; fromDate: string };
+      if (body.resolution !== ReadingResolution.DAILY) {
+        return json({ meterList: [{ totalConsumptionForPeriod: 0 }] });
+      }
+      return json({
+        meterList: [
+          {
+            // Several sub-day readings, all dated to `fromDate` — never the
+            // days in between `fromDate` and today, no matter how far back
+            // `fromDate` is.
+            periodConsumptions: [
+              { interval: `${body.fromDate}T00:00:00+00:00`, consumption: 1 },
+              { interval: `${body.fromDate}T00:20:00+00:00`, consumption: 2 },
+              { interval: `${body.fromDate}T00:40:00+00:00`, consumption: 3 },
+            ],
+          },
+        ],
+      });
+    }
+    return new Response('', { status: 404 });
+  };
+}
+
+test('collectElectricity chunks the daily fetch in DAILY_LOOKBACK_DAYS windows instead of trusting one wide call to span the whole range', async () => {
+  globalThis.fetch = fakeIecDailyCollapsedToFromDate() as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+
+  // 21 days = exactly 3 chunks of DAILY_LOOKBACK_DAYS (7) — a single wide
+  // call would only ever recover one day's worth of data against the fake
+  // above; chunking must recover one day per chunk instead.
+  const points = await collectElectricity(config, '2026-01-01', '2026-01-21', SILENT_LOG);
+
+  const dailyPoints = points.filter((p) => p.metric === 'israel_utility_electricity_consumption_daily_kwh');
+  const timestamps = dailyPoints.map((p) => p.timestampMs).sort((a, b) => a - b);
+  assert.deepEqual(timestamps, ['2026-01-01', '2026-01-08', '2026-01-15'].map((d) => dateToEpochSeconds(d) * 1000));
+  // Only the last of the same-day duplicate periods survives (deduped by date).
+  assert.ok(dailyPoints.every((p) => p.value === 3));
 });

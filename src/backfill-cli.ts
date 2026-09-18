@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { type AppConfig, type ElectricityConfig, loadConfig, type WaterConfig } from './config.js';
-import { IecClient, ReadingResolution } from './electricity/iec-client.js';
+import { DAILY_LOOKBACK_DAYS, IecClient, ReadingResolution } from './electricity/iec-client.js';
 import { createLogger, type Logger } from './logger.js';
 import { remoteWrite, type RemoteWriteSettings } from './remote-write/client.js';
 import { buildTimeSeries, type SamplePoint } from './remote-write/series-builder.js';
@@ -186,7 +186,7 @@ export async function collectWater(config: WaterConfig, from: string, to: string
   return points;
 }
 
-async function collectElectricity(config: ElectricityConfig, from: string, to: string, log: Logger): Promise<SamplePoint[]> {
+export async function collectElectricity(config: ElectricityConfig, from: string, to: string, log: Logger): Promise<SamplePoint[]> {
   const client = new IecClient(config.israeliId, { log: (msg) => log.debug(`Electricity backfill: ${msg}`) });
   try {
     await client.loadTokenFromFile(config.tokenFile);
@@ -206,15 +206,28 @@ async function collectElectricity(config: ElectricityConfig, from: string, to: s
   }
   const labels = { contract_id: contract.contractId };
 
-  const points: SamplePoint[] = [];
-  const daily = await client.getConsumption(contract.contractId, ReadingResolution.DAILY, from);
-  for (const period of daily.periods) {
-    const date = period.interval.slice(0, 10);
-    if (date < from || date > to) {
-      continue;
+  // IEC's RemoteReadingRange doesn't reliably return one row per calendar
+  // day for a wide `fromDate` — observed in practice returning many rows
+  // all dated to `fromDate` itself instead of spanning the requested range.
+  // The one window size confirmed to work is the live collector's own
+  // DAILY_LOOKBACK_DAYS, so fetch in chunks of that size rather than one
+  // wide call, same conservatism already applied to MONTHLY below.
+  const dailyByDate = new Map<string, number>();
+  for (let chunkStart = from; chunkStart <= to; chunkStart = shiftDays(chunkStart, DAILY_LOOKBACK_DAYS)) {
+    const daily = await client.getConsumption(contract.contractId, ReadingResolution.DAILY, chunkStart);
+    for (const period of daily.periods) {
+      const date = period.interval.slice(0, 10);
+      if (date < from || date > to) {
+        continue;
+      }
+      dailyByDate.set(date, period.consumption);
     }
+  }
+
+  const points: SamplePoint[] = [];
+  for (const [date, consumption] of dailyByDate) {
     const timestampMs = dateToEpochSeconds(date) * 1000;
-    points.push({ metric: 'israel_utility_electricity_consumption_daily_kwh', labels, timestampMs, value: period.consumption });
+    points.push({ metric: 'israel_utility_electricity_consumption_daily_kwh', labels, timestampMs, value: consumption });
     points.push({
       metric: 'israel_utility_electricity_consumption_daily_covers_timestamp_seconds',
       labels,
