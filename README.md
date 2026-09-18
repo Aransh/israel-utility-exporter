@@ -129,6 +129,7 @@ empty `/metrics` silently.
 | `ELECTRICITY_PRICE_PER_KWH` | — | ILS. Used when `flat`. |
 | `ELECTRICITY_TARIFF_SCHEDULE_FILE` | — | Path to a JSON schedule file. Used when `schedule`. See `tariff-schedule.example.json`. |
 | `REMOTE_WRITE_URL` | — | A Prometheus remote_write endpoint. Only used by the [backfill CLI](#historical-data-backfill), not the running exporter. |
+| `REMOTE_WRITE_EXTRA_LABELS` | — | Comma-separated `key=value` pairs (e.g. `job=israel-utility-exporter,instance=host:9877`) applied to every backfilled series — **set this to match your scrape config's `job`/`instance`**, or backfilled and live-scraped data land as separate series. |
 | `REMOTE_WRITE_USERNAME` / `REMOTE_WRITE_PASSWORD` | — | HTTP Basic auth for `REMOTE_WRITE_URL`. Set together. |
 | `REMOTE_WRITE_BEARER_TOKEN` | — | Bearer token auth for `REMOTE_WRITE_URL`. Mutually exclusive with Basic auth. |
 | `REMOTE_WRITE_TIMEOUT_MS` | `30000` | Per-request timeout for the remote_write POST. |
@@ -307,15 +308,39 @@ node dist/backfill-cli.js --service electricity --from 2026-01-01 --to 2026-03-0
 node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, no write
 ```
 
+- **Match your scrape config's `job`/`instance` labels, or the graph will split
+  in two.** Those labels are assigned by Prometheus itself when it scrapes a
+  target — they're not part of `/metrics` — so a backfilled series has no
+  `job`/`instance` label unless you add it yourself, making it a *different*
+  series from the one your live scrapes produce for the same meter/contract.
+  Set `REMOTE_WRITE_EXTRA_LABELS` to whatever your scrape config uses, e.g.
+  for the `job_name`/target in `prometheus/prometheus.yml.example`:
+  `REMOTE_WRITE_EXTRA_LABELS=job=israel-utility-exporter,instance=israel-utility-exporter:9877`.
+  If you already backfilled without this set, see "Cleaning up a bad
+  backfill" below.
 - Only **raw numbers the utility APIs report directly** are backfilled: daily
   consumption for both utilities, weekly consumption for water (electricity
   has no weekly metric), and monthly consumption for both. No cost/rate
   estimates are backfilled — those are computed locally from today's tariff
   config and would misrepresent a historical day priced under a different
-  rate.
+  rate. The cumulative meter reading and water's month-end forecast are
+  **not backfillable at all**: both portals' APIs only ever report the
+  *current* value for these (no date parameter — `RymProClient`'s forecast
+  and last-read endpoints, and IEC's own `totalImport` figure, all reflect
+  "right now", not a requested historical date), so there's no historical
+  version of either to fetch.
 - The range you can actually backfill is **limited to whatever the underlying
   portal API itself still retains** — there's no way to go back further than
   that, regardless of `--days`/`--from`.
+- **Your remote_write receiver may silently drop old samples.** A receiver's
+  own retention window or backfill-age limit can reject samples outside it
+  while still reporting the batch as successful — the CLI has no way to see
+  this. VictoriaMetrics, for example, logs `cannot insert row with too small
+  timestamp ...; probably you need updating -retentionPeriod or
+  -maxBackfillAge` without failing the write. If a wide backfill looks
+  incomplete (e.g. only the most recent month or two of monthly data
+  actually shows up), check the receiver's own logs and widen its retention/
+  backfill-age settings rather than assuming the CLI missed something.
 - Electricity requires a token already saved by `npm run login:electricity` —
   IEC's OTP login can't be automated here.
 - Samples are timestamped at **local midnight** of the day they cover, the
@@ -340,6 +365,32 @@ node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, 
 See the [Configuration](#configuration) table for `REMOTE_WRITE_*` variables,
 including TLS options (custom CA, client cert, skip-verify) for a receiver on
 a private or self-signed certificate.
+
+### Cleaning up a bad backfill
+
+remote_write is idempotent for a *correct* re-run (same series, same values),
+but it's still writing to the same TSDB your live scrapes use — there's no
+separate "backfill store" to just wipe. If you backfilled before setting
+`REMOTE_WRITE_EXTRA_LABELS` (or with some other wrong label set), the badly
+labelled series need deleting before backfilling again, or you'll end up with
+both the old and the corrected series side by side.
+
+VictoriaMetrics exposes a Prometheus-compatible delete API for this. Since a
+missing label matches an empty string in PromQL selectors, you can target
+exactly the series that are missing `job`/`instance` (i.e. the ones this tool
+wrote before the fix) without touching correctly-labelled scraped data:
+
+```bash
+curl -X POST 'http://<your-victoriametrics-host>:8428/api/v1/admin/tsdb/delete_series' \
+  --data-urlencode 'match[]={__name__=~"israel_utility_.*",job="",instance=""}'
+```
+
+This requires admin endpoints to be enabled (`-search.enableAdminEndpoints`
+on VictoriaMetrics, depending on your version/deployment). Adjust the
+`match[]` selector for your own setup if you need to target something more
+specific. Prometheus itself has an equivalent
+[`/api/v1/admin/tsdb/delete_series`](https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series)
+(behind `--web.enable-admin-api`) if that's your remote_write receiver instead.
 
 ## Development
 

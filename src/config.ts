@@ -45,6 +45,14 @@ export interface RemoteWriteConfig {
   bearerToken?: string;
   timeoutMs: number;
   tls: RemoteWriteTlsConfig;
+  /**
+   * Extra labels (e.g. `job`, `instance`) applied to every backfilled series.
+   * A live scrape target's `job`/`instance` labels are assigned by the
+   * scraping Prometheus itself, not carried in `/metrics` — without these
+   * set to match, backfilled and scraped points for the same series end up
+   * as two distinct series with a different label set, splitting the graph.
+   */
+  extraLabels: Record<string, string>;
 }
 
 export interface AppConfig {
@@ -138,7 +146,34 @@ function loadRemoteWriteConfig(env: NodeJS.ProcessEnv): RemoteWriteConfig | null
     bearerToken,
     timeoutMs: intOr(env.REMOTE_WRITE_TIMEOUT_MS, 30_000, 'REMOTE_WRITE_TIMEOUT_MS'),
     tls: { ca, cert, key, insecureSkipVerify: isEnabled(env.REMOTE_WRITE_TLS_INSECURE_SKIP_VERIFY) },
+    extraLabels: parseExtraLabels(env.REMOTE_WRITE_EXTRA_LABELS),
   };
+}
+
+/** Parses a comma-separated `key=value,key=value` list into a label map. */
+function parseExtraLabels(value: string | undefined): Record<string, string> {
+  const labels: Record<string, string> = {};
+  const raw = value?.trim();
+  if (!raw) {
+    return labels;
+  }
+  for (const pair of raw.split(',')) {
+    const trimmed = pair.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) {
+      throw new ConfigError(`REMOTE_WRITE_EXTRA_LABELS entry "${trimmed}" must be in key=value form.`);
+    }
+    const name = trimmed.slice(0, eq).trim();
+    const labelValue = trimmed.slice(eq + 1).trim();
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name) || name === '__name__') {
+      throw new ConfigError(`REMOTE_WRITE_EXTRA_LABELS label name "${name}" is not a valid Prometheus label name.`);
+    }
+    labels[name] = labelValue;
+  }
+  return labels;
 }
 
 function loadWaterConfig(env: NodeJS.ProcessEnv): WaterConfig {

@@ -321,7 +321,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const series = buildTimeSeries(points);
+  // A live scrape target's `job`/`instance` labels come from Prometheus's own
+  // scrape config, not from `/metrics` — without applying the same values
+  // here, a backfilled series and its later live-scraped counterpart end up
+  // as two distinct series (different label sets), splitting the graph.
+  const extraLabels = config.remoteWrite?.extraLabels ?? {};
+  const series = buildTimeSeries(points.map((point) => ({ ...point, labels: { ...extraLabels, ...point.labels } })));
   const totalSamples = series.reduce((sum, ts) => sum + ts.samples.length, 0);
 
   if (args.dryRun) {
@@ -366,6 +371,11 @@ async function main(): Promise<void> {
   }
 
   console.log(`Backfill complete: wrote ${sent} series / ${totalSamples} samples for range ${from}..${to}.`);
+  console.log(
+    'Note: a remote_write receiver can silently drop samples older than its own retention window while still ' +
+      'returning success (e.g. VictoriaMetrics logs "cannot insert row with too small timestamp" without failing ' +
+      'the request) — check the receiver\'s own logs/data if a wide backfill range looks incomplete.',
+  );
 }
 
 // Guards against running `main()` as a side effect of importing this module

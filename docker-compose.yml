@@ -30,6 +30,10 @@ services:
 
       # --- Historical data backfill (only used by `backfill-cli.js`, not the running exporter) ---
       # - REMOTE_WRITE_URL=http://prometheus:9090/api/v1/write
+      # Must match the job_name/target below, or backfilled and scraped data
+      # land as separate series (Prometheus assigns job/instance at scrape
+      # time — they're not part of /metrics).
+      # - REMOTE_WRITE_EXTRA_LABELS=job=israel-utility-exporter,instance=israel-utility-exporter:9877
       # - REMOTE_WRITE_USERNAME=
       # - REMOTE_WRITE_PASSWORD=
       # - REMOTE_WRITE_BEARER_TOKEN=

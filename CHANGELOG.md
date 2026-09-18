@@ -11,6 +11,23 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-18
+
+### Fixed
+
+- The backfill CLI now supports `REMOTE_WRITE_EXTRA_LABELS` (comma-separated
+  `key=value` pairs, e.g. `job=israel-utility-exporter,instance=host:9877`)
+  applied to every backfilled series. Without it, a backfilled series had no
+  `job`/`instance` label — those are assigned by Prometheus at scrape time,
+  not carried in `/metrics` — so it landed as a *different* series from the
+  one live scrapes produce for the same meter/contract, splitting the graph
+  in two. The README's "Historical data backfill" section now documents
+  this, plus a VictoriaMetrics command for cleaning up a backfill run that
+  predates this fix, and that a receiver's own retention/backfill-age limits
+  can silently drop old samples while still reporting success (observed
+  first-hand against VictoriaMetrics — see the new callouts in that
+  section).
+
 ## [0.3.1] - 2026-09-18
 
 ### Fixed
@@ -127,7 +144,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.1...v0.2.2
