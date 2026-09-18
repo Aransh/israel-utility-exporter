@@ -73,7 +73,7 @@ export const waterGauges = {
   }),
   tariffThresholdCubicMeters: new Gauge({
     name: 'israel_utility_water_tariff_threshold_cubic_meters',
-    help: "This month's subsidized-rate threshold (WATER_TARIFF_HOUSEHOLD_SIZE x WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS), m3. Only present in tiered tariff mode.",
+    help: "This month's subsidized-rate threshold (max(WATER_TARIFF_HOUSEHOLD_SIZE, 2) x WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS), m3. Only present in tiered tariff mode.",
     labelNames: WATER_LABELS,
     registers: [registry],
   }),

@@ -109,6 +109,25 @@ test('waterTariffThreshold multiplies household size by the per-person allowance
   assert.equal(waterTariffThreshold(TIERS), 14);
 });
 
+test('waterTariffThreshold floors a 1-person household at a 2-person allowance', () => {
+  // Real Yuval Lim figures: 3.5 m3/person/month, but never less than a
+  // 2-person allowance per housing unit — a solo resident still gets 7, not 3.5.
+  const soloHousehold: WaterTariffTiers = { ...TIERS, householdSize: 1, allowancePerPersonCubicMeters: 3.5 };
+  assert.equal(waterTariffThreshold(soloHousehold), 7);
+});
+
+test('waterTariffThreshold floors a 0-person household the same way', () => {
+  const noRegisteredResidents: WaterTariffTiers = { ...TIERS, householdSize: 0, allowancePerPersonCubicMeters: 3.5 };
+  assert.equal(waterTariffThreshold(noRegisteredResidents), 7);
+});
+
+test('waterTariffThreshold does not apply the floor once household size reaches 2', () => {
+  const twoPeople: WaterTariffTiers = { ...TIERS, householdSize: 2, allowancePerPersonCubicMeters: 3.5 };
+  assert.equal(waterTariffThreshold(twoPeople), 7);
+  const threePeople: WaterTariffTiers = { ...TIERS, householdSize: 3, allowancePerPersonCubicMeters: 3.5 };
+  assert.equal(waterTariffThreshold(threePeople), 10.5);
+});
+
 test('tieredWaterCost prices consumption under the threshold entirely at the normal rate', () => {
   assert.equal(tieredWaterCost(TIERS, 10), 100);
 });

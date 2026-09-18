@@ -56,8 +56,10 @@ groups:
           summary: 'IEC session token expires within 3 days'
           description: 'The exporter refreshes this automatically most of the time; this fires when it is unexpectedly close to expiry, which usually means the refresh token itself is about to lapse. Re-run the login CLI if the electricity metrics stop updating.'
 
-  # Example budget alerts: NOT safe to run as shipped. Consumption varies with
-  # household size, so these thresholds are illustrative starting points, not
+  # Example budget alerts: NOT safe to run as shipped, except
+  # WaterMonthlyConsumptionOverBudget in WATER_TARIFF_MODE=tiered (it's
+  # self-sizing — see its own comment). Consumption varies with household
+  # size, so the other thresholds here are illustrative starting points, not
   # defaults — copy this group into your own rule file and size it to your
   # household before enabling it. Starting points, mirroring Israel's
   # subsidised water allocation and a reasonable daily electricity budget:
@@ -74,13 +76,22 @@ groups:
           description: '{{ $value }} L on the most recently published day, meter {{ $labels.meter_id }}. Tune the threshold in this rule to your household size.'
 
       - alert: WaterMonthlyConsumptionOverBudget
-        expr: israel_utility_water_consumption_monthly_liters > 14000 # e.g. 3500 L x 4 people
+        # Unlike the other rules in this group, this one needs no manual
+        # sizing if WATER_TARIFF_MODE=tiered is configured — it compares
+        # directly against the exporter's own computed threshold
+        # (israel_utility_water_tariff_threshold_cubic_meters), so it always
+        # matches whatever WATER_TARIFF_HOUSEHOLD_SIZE/allowance is actually
+        # set. In flat mode that metric doesn't exist, so this simply never
+        # fires (a PromQL comparison against an absent series matches
+        # nothing, not an error) — replace the expr with a hardcoded number
+        # (e.g. 3500 L x household size) if you want this alert in flat mode.
+        expr: israel_utility_water_consumption_monthly_liters > (israel_utility_water_tariff_threshold_cubic_meters * 1000)
         for: 0m
         labels:
           severity: info
         annotations:
           summary: 'Monthly water consumption over the subsidised allocation'
-          description: '{{ $value }} L so far this month, meter {{ $labels.meter_id }}. Past this, Israeli water tariffs roughly double.'
+          description: '{{ $value }} L so far this month, meter {{ $labels.meter_id }}, over this household''s threshold. Past this, Israeli water tariffs roughly double.'
 
       - alert: ElectricityMonthlyConsumptionOverBudget
         expr: israel_utility_electricity_consumption_monthly_kwh > 700 # illustrative only — size to your own history
