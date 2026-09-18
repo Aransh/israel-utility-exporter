@@ -11,6 +11,24 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-18
+
+### Added
+
+- Volume-tiered water cost estimation (`WATER_TARIFF_MODE=tiered`), modeling
+  the subsidized-allowance-then-higher-rate structure Israeli water tariffs
+  actually use instead of a single flat price. Configure
+  `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER`, `WATER_TARIFF_HOUSEHOLD_SIZE`,
+  and `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` alongside the existing
+  `WATER_PRICE_PER_CUBIC_METER` (now doubling as the below-allowance rate).
+  Adds `israel_utility_water_tariff_threshold_cubic_meters` and
+  `israel_utility_water_effective_rate_ils_per_cubic_meter`, and two new
+  Grafana panels, so the computed threshold and blended rate are visible
+  rather than hidden inside the cost figure.
+- `israel_utility_water_cost_estimate_forecast_ils`: the portal's own
+  month-end consumption forecast, priced the same way (flat or tiered) as
+  the existing month-to-date cost estimate, plus a matching Grafana panel.
+
 ## [0.3.3] - 2026-09-18
 
 ### Fixed
@@ -168,7 +186,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.0...v0.3.1

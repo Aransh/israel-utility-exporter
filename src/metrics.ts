@@ -71,9 +71,27 @@ export const waterGauges = {
     labelNames: WATER_LABELS,
     registers: [registry],
   }),
+  tariffThresholdCubicMeters: new Gauge({
+    name: 'israel_utility_water_tariff_threshold_cubic_meters',
+    help: "This month's subsidized-rate threshold (WATER_TARIFF_HOUSEHOLD_SIZE x WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS), m3. Only present in tiered tariff mode.",
+    labelNames: WATER_LABELS,
+    registers: [registry],
+  }),
+  effectiveRateIlsPerCubicMeter: new Gauge({
+    name: 'israel_utility_water_effective_rate_ils_per_cubic_meter',
+    help: "This month-to-date consumption's blended ILS/m3 rate. Only present in tiered tariff mode — see README for what \"tiered\" means.",
+    labelNames: WATER_LABELS,
+    registers: [registry],
+  }),
   costEstimateIls: new Gauge({
     name: 'israel_utility_water_cost_estimate_ils',
-    help: 'Estimated cost of this month-to-date consumption, using WATER_PRICE_PER_CUBIC_METER. Only present when that is set.',
+    help: 'Estimated cost of this month-to-date consumption. Only present when WATER_PRICE_PER_CUBIC_METER is set (flat mode) or WATER_TARIFF_MODE=tiered is fully configured.',
+    labelNames: WATER_LABELS,
+    registers: [registry],
+  }),
+  costEstimateForecastIls: new Gauge({
+    name: 'israel_utility_water_cost_estimate_forecast_ils',
+    help: "Estimated cost of the portal's own month-end consumption forecast, priced the same way as israel_utility_water_cost_estimate_ils. Only present when priced.",
     labelNames: WATER_LABELS,
     registers: [registry],
   }),

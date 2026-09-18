@@ -1,26 +1,31 @@
 import { readFileSync } from 'node:fs';
 
+import type { WaterTariffTiers } from './cost/tariff.js';
 import type { WeeklyWindow } from './water/rympro-client.js';
 
 export class ConfigError extends Error {}
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-export type TariffMode = 'flat' | 'schedule';
+export type ElectricityTariffMode = 'flat' | 'schedule';
+export type WaterTariffMode = 'flat' | 'tiered';
 
 export interface WaterConfig {
   email: string;
   password: string;
   pollIntervalMs: number;
   weeklyWindow: WeeklyWindow;
-  /** ILS per cubic meter. Null disables cost estimation. */
+  tariffMode: WaterTariffMode;
+  /** ILS per cubic meter. Used when tariffMode is "flat"; also the tiered mode's below-allowance rate. Null disables cost estimation in flat mode. */
   pricePerCubicMeter: number | null;
+  /** Set when tariffMode is "tiered". */
+  tariffTiers: WaterTariffTiers | null;
 }
 
 export interface ElectricityConfig {
   israeliId: string;
   tokenFile: string;
   pollIntervalMs: number;
-  tariffMode: TariffMode;
+  tariffMode: ElectricityTariffMode;
   /** ILS per kWh, used when tariffMode is "flat". Null disables cost estimation in flat mode. */
   pricePerKwh: number | null;
   /** Path to a time-of-use schedule JSON file, used when tariffMode is "schedule". */
@@ -201,13 +206,48 @@ function loadWaterConfig(env: NodeJS.ProcessEnv): WaterConfig {
   const weeklyWindow: WeeklyWindow =
     env.WATER_WEEKLY_WINDOW === 'monday' || env.WATER_WEEKLY_WINDOW === 'rolling' ? env.WATER_WEEKLY_WINDOW : 'sunday';
 
+  const tariffMode: WaterTariffMode = env.WATER_TARIFF_MODE === 'tiered' ? 'tiered' : 'flat';
+  const pricePerCubicMeter = positiveFloatOrNull(env.WATER_PRICE_PER_CUBIC_METER);
+  const tariffTiers = tariffMode === 'tiered' ? loadWaterTariffTiers(env, pricePerCubicMeter) : null;
+
   return {
     email,
     password,
     pollIntervalMs: pollMinutes(env.WATER_POLL_INTERVAL_MINUTES, DEFAULT_WATER_POLL_MINUTES, 'WATER_POLL_INTERVAL_MINUTES') * 60_000,
     weeklyWindow,
-    pricePerCubicMeter: positiveFloatOrNull(env.WATER_PRICE_PER_CUBIC_METER),
+    tariffMode,
+    pricePerCubicMeter,
+    tariffTiers,
   };
+}
+
+/**
+ * `normalRatePerCubicMeter` is `WATER_PRICE_PER_CUBIC_METER` — the same
+ * variable flat mode uses — since it means the same thing in both modes: the
+ * price below the tiered mode's allowance threshold, or the only price in
+ * flat mode.
+ */
+function loadWaterTariffTiers(env: NodeJS.ProcessEnv, normalRatePerCubicMeter: number | null): WaterTariffTiers {
+  if (normalRatePerCubicMeter === null) {
+    throw new ConfigError(
+      'WATER_TARIFF_MODE is "tiered" but WATER_PRICE_PER_CUBIC_METER (the below-allowance rate) is missing or not a positive number.',
+    );
+  }
+  const excessRatePerCubicMeter = positiveFloatOrNull(env.WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER);
+  if (excessRatePerCubicMeter === null) {
+    throw new ConfigError('WATER_TARIFF_MODE is "tiered" but WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER is missing or not a positive number.');
+  }
+  const householdSize = positiveIntOrNull(env.WATER_TARIFF_HOUSEHOLD_SIZE);
+  if (householdSize === null) {
+    throw new ConfigError('WATER_TARIFF_MODE is "tiered" but WATER_TARIFF_HOUSEHOLD_SIZE is missing or not a positive integer.');
+  }
+  const allowancePerPersonCubicMeters = positiveFloatOrNull(env.WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS);
+  if (allowancePerPersonCubicMeters === null) {
+    throw new ConfigError(
+      'WATER_TARIFF_MODE is "tiered" but WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS is missing or not a positive number.',
+    );
+  }
+  return { normalRatePerCubicMeter, excessRatePerCubicMeter, householdSize, allowancePerPersonCubicMeters };
 }
 
 function loadElectricityConfig(env: NodeJS.ProcessEnv, dataDir: string): ElectricityConfig {
@@ -216,7 +256,7 @@ function loadElectricityConfig(env: NodeJS.ProcessEnv, dataDir: string): Electri
     throw new ConfigError('ELECTRICITY_ENABLED is true but ELECTRICITY_ID is missing or not a 9-digit Israeli ID.');
   }
 
-  const tariffMode: TariffMode = env.ELECTRICITY_TARIFF_MODE === 'schedule' ? 'schedule' : 'flat';
+  const tariffMode: ElectricityTariffMode = env.ELECTRICITY_TARIFF_MODE === 'schedule' ? 'schedule' : 'flat';
   const pricePerKwh = positiveFloatOrNull(env.ELECTRICITY_PRICE_PER_KWH);
   const tariffScheduleFile = env.ELECTRICITY_TARIFF_SCHEDULE_FILE?.trim() || null;
 
@@ -267,6 +307,14 @@ function positiveFloatOrNull(value: string | undefined): number | null {
   }
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function positiveIntOrNull(value: string | undefined): number | null {
+  if (value === undefined || value.trim() === '') {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 export function asLogLevel(value: string | undefined): LogLevel {

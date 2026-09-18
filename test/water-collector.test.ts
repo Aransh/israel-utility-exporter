@@ -7,6 +7,7 @@ import { test } from 'node:test';
 
 import type { WaterConfig } from '../src/config.js';
 import type { Logger } from '../src/logger.js';
+import { registry } from '../src/metrics.js';
 import { WaterCollector } from '../src/water/collector.js';
 
 const METER_ID = 55123;
@@ -34,6 +35,9 @@ function fakePortal() {
     if (path.startsWith(`/consumption/monthly/${METER_ID}/`)) {
       return json([{ meterCount: METER_ID, consDate: '2026-08-01T00:00:00', cons: 5 }]);
     }
+    if (path === `/consumption/forecast/${METER_ID}`) {
+      return json({ estimatedConsumption: 7 });
+    }
     return new Response('', { status: 404 });
   };
 }
@@ -45,8 +49,56 @@ function captureLog(): { log: Logger; lines: string[] } {
 }
 
 function makeConfig(): WaterConfig {
-  return { email: 'a@example.com', password: 'correct-horse', pollIntervalMs: 3_600_000, weeklyWindow: 'sunday', pricePerCubicMeter: null };
+  return {
+    email: 'a@example.com',
+    password: 'correct-horse',
+    pollIntervalMs: 3_600_000,
+    weeklyWindow: 'sunday',
+    tariffMode: 'flat',
+    pricePerCubicMeter: null,
+    tariffTiers: null,
+  };
 }
+
+test('tiered tariff mode sets the threshold, effective rate, and cost gauges from the month-to-date consumption', async () => {
+  globalThis.fetch = fakePortal() as typeof fetch;
+  const dataDir = mkdtempSync(join(tmpdir(), 'water-collector-'));
+
+  const config: WaterConfig = {
+    ...makeConfig(),
+    tariffMode: 'tiered',
+    tariffTiers: { normalRatePerCubicMeter: 2, excessRatePerCubicMeter: 9, householdSize: 2, allowancePerPersonCubicMeters: 1.5 },
+  };
+  const collector = new WaterCollector(config, dataDir, captureLog().log);
+  await collector.start();
+  collector.stop();
+
+  // monthly consumption is 5 m3, forecast is 7 m3 (fakePortal); threshold is
+  // 2 * 1.5 = 3 m3; monthly cost is 3 m3 @ 2 + 2 m3 @ 9 = 24, effective rate
+  // is 24 / 5 = 4.8; forecast cost is 3 m3 @ 2 + 4 m3 @ 9 = 42.
+  const LABELS = 'meter_id="55123",meter_serial="SER1"';
+  const body = await registry.metrics();
+  assert.match(body, new RegExp(`israel_utility_water_tariff_threshold_cubic_meters\\{${LABELS}\\} 3`));
+  assert.match(body, new RegExp(`israel_utility_water_effective_rate_ils_per_cubic_meter\\{${LABELS}\\} 4\\.8`));
+  assert.match(body, new RegExp(`israel_utility_water_cost_estimate_ils\\{${LABELS}\\} 24`));
+  assert.match(body, new RegExp(`israel_utility_water_cost_estimate_forecast_ils\\{${LABELS}\\} 42`));
+});
+
+test('flat tariff mode also prices the forecast, the same way as the month-to-date estimate', async () => {
+  globalThis.fetch = fakePortal() as typeof fetch;
+  const dataDir = mkdtempSync(join(tmpdir(), 'water-collector-'));
+
+  const config: WaterConfig = { ...makeConfig(), pricePerCubicMeter: 3 };
+  const collector = new WaterCollector(config, dataDir, captureLog().log);
+  await collector.start();
+  collector.stop();
+
+  // monthly 5 m3 @ 3 = 15; forecast 7 m3 @ 3 = 21.
+  const LABELS = 'meter_id="55123",meter_serial="SER1"';
+  const body = await registry.metrics();
+  assert.match(body, new RegExp(`israel_utility_water_cost_estimate_ils\\{${LABELS}\\} 15`));
+  assert.match(body, new RegExp(`israel_utility_water_cost_estimate_forecast_ils\\{${LABELS}\\} 21`));
+});
 
 test('logs the backfill hint on a genuine first run, and not again once data has been recorded', async () => {
   globalThis.fetch = fakePortal() as typeof fetch;

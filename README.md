@@ -120,7 +120,11 @@ empty `/metrics` silently.
 | `WATER_EMAIL` / `WATER_PASSWORD` | — | RYM Pro portal credentials. Required if `WATER_ENABLED`. |
 | `WATER_POLL_INTERVAL_MINUTES` | `90` | Floored at 15 — the meter itself updates at most hourly, and polling faster risks the portal's rate limit. |
 | `WATER_WEEKLY_WINDOW` | `sunday` | `sunday` \| `monday` \| `rolling` — see [Behavior worth knowing](#behavior-worth-knowing). |
-| `WATER_PRICE_PER_CUBIC_METER` | — | ILS. If set, enables `israel_utility_water_cost_estimate_ils`. |
+| `WATER_TARIFF_MODE` | `flat` | `flat` \| `tiered`. See [Cost estimation](#cost-estimation). |
+| `WATER_PRICE_PER_CUBIC_METER` | — | ILS. Used when `flat`; also the tiered mode's below-allowance rate. If set (flat) or fully configured (tiered), enables `israel_utility_water_cost_estimate_ils`. |
+| `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER` | — | ILS. Used when `tiered` — the rate above the household's allowance. |
+| `WATER_TARIFF_HOUSEHOLD_SIZE` | — | Positive integer. Used when `tiered` — number of people registered on the water account. |
+| `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` | — | m3. Used when `tiered` — subsidized m3/person/month before the excess rate applies. |
 | `ELECTRICITY_ENABLED` | `false` | Set `true` to enable the electricity collector. |
 | `ELECTRICITY_ID` | — | Your 9-digit Israeli ID. Required if `ELECTRICITY_ENABLED`. |
 | `ELECTRICITY_TOKEN_FILE` | `$DATA_DIR/iec-token.json` | Written by the login CLI; loaded/refreshed by the collector. |
@@ -205,10 +209,27 @@ you supply the price yourself:
   `israel_utility_electricity_effective_rate_ils_per_kwh` exposes the blended
   rate itself, so the assumption is visible rather than hidden inside a cost
   figure.
+- **Volume-tiered pricing** (water only, `WATER_TARIFF_MODE=tiered`): water
+  has no time-of-use concept in Israel — tariffs are volume-tiered instead, a
+  subsidized allowance per person registered on the account, then a higher
+  rate beyond it (see e.g. a local water corporation's published tariffs,
+  like [Yuval Lim's](https://www.yuvallim.co.il/תעריפי-מים-וביוב/)). Configure:
+  - `WATER_PRICE_PER_CUBIC_METER` — the rate below the allowance (the same
+    variable flat mode uses).
+  - `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER` — the rate above it.
+  - `WATER_TARIFF_HOUSEHOLD_SIZE` — people registered on the account.
+  - `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` — m3/person/month before
+    the excess rate kicks in.
 
-  Water has no time-of-use concept in Israel — tariffs are volume-tiered (a
-  subsidized allowance per person, then a higher rate), not time-based — so
-  its cost estimate is flat-price-only.
+  This month's threshold is `WATER_TARIFF_HOUSEHOLD_SIZE x
+  WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS`; consumption up to it is
+  priced at the normal rate, the rest at the excess rate.
+  `israel_utility_water_tariff_threshold_cubic_meters` and
+  `israel_utility_water_effective_rate_ils_per_cubic_meter` expose the
+  threshold and the resulting blended ILS/m3 rate, so — as with electricity's
+  schedule mode — neither is hidden inside the cost figure. **Get the actual
+  numbers from your own water corporation's published tariff and account
+  details** — they change periodically and this exporter doesn't fetch them.
 
 ## Metrics
 
@@ -234,7 +255,10 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_water_consumption_weekly_days_counted` / `..._elapsed` | How much of the weekly window is actually published vs. begun. |
 | `israel_utility_water_consumption_monthly_liters` | Month-to-date consumption. |
 | `israel_utility_water_consumption_forecast_liters` | The portal's own month-end forecast. |
-| `israel_utility_water_cost_estimate_ils` | Month-to-date cost, if `WATER_PRICE_PER_CUBIC_METER` is set. |
+| `israel_utility_water_tariff_threshold_cubic_meters` | This month's subsidized-rate threshold. Tiered tariff mode only. |
+| `israel_utility_water_effective_rate_ils_per_cubic_meter` | This month-to-date consumption's blended ILS/m3 rate. Tiered tariff mode only. |
+| `israel_utility_water_cost_estimate_ils` | Month-to-date cost, if priced (flat or tiered). |
+| `israel_utility_water_cost_estimate_forecast_ils` | Estimated cost of the portal's own month-end forecast, priced the same way. |
 | `israel_utility_water_meter_info` | Always 1; carries `meter_serial` for dashboard joins. |
 | `israel_utility_water_scrape_success` / `..._last_success_timestamp_seconds` / `..._consecutive_failures` | Collector health. |
 

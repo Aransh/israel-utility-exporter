@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
+import { effectiveWaterRate, tieredWaterCost, waterTariffThreshold } from '../cost/tariff.js';
 import type { WaterConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { waterGauges } from '../metrics.js';
@@ -174,13 +175,30 @@ export class WaterCollector {
 
     if (snapshot.monthly !== null) {
       waterGauges.consumptionMonthlyLiters.set(labels, snapshot.monthly * 1000);
-      if (this.config.pricePerCubicMeter !== null) {
-        waterGauges.costEstimateIls.set(labels, snapshot.monthly * this.config.pricePerCubicMeter);
+      if (this.config.tariffMode === 'tiered' && this.config.tariffTiers) {
+        waterGauges.tariffThresholdCubicMeters.set(labels, waterTariffThreshold(this.config.tariffTiers));
+        waterGauges.effectiveRateIlsPerCubicMeter.set(labels, effectiveWaterRate(this.config.tariffTiers, snapshot.monthly));
+      }
+      const cost = this.costEstimate(snapshot.monthly);
+      if (cost !== null) {
+        waterGauges.costEstimateIls.set(labels, cost);
       }
     }
     if (snapshot.forecast !== null) {
       waterGauges.consumptionForecastLiters.set(labels, snapshot.forecast * 1000);
+      const forecastCost = this.costEstimate(snapshot.forecast);
+      if (forecastCost !== null) {
+        waterGauges.costEstimateForecastIls.set(labels, forecastCost);
+      }
     }
+  }
+
+  /** ILS cost of `consumptionCubicMeters` under the configured tariff, or null if no pricing is configured. */
+  private costEstimate(consumptionCubicMeters: number): number | null {
+    if (this.config.tariffMode === 'tiered' && this.config.tariffTiers) {
+      return tieredWaterCost(this.config.tariffTiers, consumptionCubicMeters);
+    }
+    return this.config.pricePerCubicMeter !== null ? consumptionCubicMeters * this.config.pricePerCubicMeter : null;
   }
 
   private scheduleNext(): void {

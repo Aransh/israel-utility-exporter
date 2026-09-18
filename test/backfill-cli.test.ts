@@ -129,7 +129,15 @@ test('collectWater skips a fixed weekly bucket that starts before `from` (would 
   // 2026-01-04, -11 and -18 are Sundays: a `sunday` window snaps `from`
   // (a mid-week Wednesday) back to 2026-01-04, a bucket only fetched
   // starting 2026-01-07 onward — that leading bucket must be skipped.
-  const config: WaterConfig = { email: 'a@example.com', password: 'x', pollIntervalMs: 60_000, weeklyWindow: 'sunday', pricePerCubicMeter: null };
+  const config: WaterConfig = {
+    email: 'a@example.com',
+    password: 'x',
+    pollIntervalMs: 60_000,
+    weeklyWindow: 'sunday',
+    tariffMode: 'flat',
+    pricePerCubicMeter: null,
+    tariffTiers: null,
+  };
   const points = await collectWater(config, '2026-01-07', '2026-01-24', SILENT_LOG);
 
   const weeklyPoints = points.filter((p) => p.metric === 'israel_utility_water_consumption_weekly_liters');
@@ -142,7 +150,15 @@ test('collectWater skips a fixed weekly bucket that starts before `from` (would 
 test('collectWater includes a rolling weekly bucket that starts exactly at `from`', async () => {
   globalThis.fetch = fakeWaterPortal() as typeof fetch;
 
-  const config: WaterConfig = { email: 'a@example.com', password: 'x', pollIntervalMs: 60_000, weeklyWindow: 'rolling', pricePerCubicMeter: null };
+  const config: WaterConfig = {
+    email: 'a@example.com',
+    password: 'x',
+    pollIntervalMs: 60_000,
+    weeklyWindow: 'rolling',
+    tariffMode: 'flat',
+    pricePerCubicMeter: null,
+    tariffTiers: null,
+  };
   const points = await collectWater(config, '2026-01-07', '2026-01-20', SILENT_LOG);
 
   const weeklyPoints = points.filter((p) => p.metric === 'israel_utility_water_consumption_weekly_liters');
