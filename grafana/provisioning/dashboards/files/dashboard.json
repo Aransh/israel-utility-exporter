@@ -110,7 +110,7 @@
       "id": 9,
       "type": "stat",
       "title": "Water Tariff Threshold (Tiered Mode, Month to Date)",
-      "description": "WATER_TARIFF_HOUSEHOLD_SIZE x WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS. Consumption above this is priced at WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER. Only populated in WATER_TARIFF_MODE=tiered.",
+      "description": "max(WATER_TARIFF_HOUSEHOLD_SIZE, 2) x WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS. Consumption above this is priced at WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER. Only populated in WATER_TARIFF_MODE=tiered.",
       "gridPos": { "x": 8, "y": 7, "w": 8, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_tariff_threshold_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }],

@@ -20,8 +20,10 @@
  *   to an allowance based on the number of people registered on the account,
  *   then a higher rate beyond it (see e.g.
  *   https://www.yuvallim.co.il/תעריפי-מים-וביוב/). Consumption up to
- *   `householdSize * allowancePerPersonCubicMeters` is priced at
- *   `normalRatePerCubicMeter`, the rest at `excessRatePerCubicMeter`.
+ *   `max(householdSize, 2) * allowancePerPersonCubicMeters` (every housing
+ *   unit is guaranteed at least a 2-person allowance by law, regardless of
+ *   registered headcount) is priced at `normalRatePerCubicMeter`, the rest
+ *   at `excessRatePerCubicMeter`.
  */
 import { readFileSync } from 'node:fs';
 
@@ -158,15 +160,27 @@ export interface WaterTariffTiers {
   normalRatePerCubicMeter: number;
   /** ILS per m3, for consumption beyond the household's subsidized threshold. */
   excessRatePerCubicMeter: number;
-  /** Number of people registered on the water account. */
+  /** Number of people registered on the water account. `waterTariffThreshold` floors this at 2 — see its comment. */
   householdSize: number;
   /** m3 per registered person before the higher rate applies. */
   allowancePerPersonCubicMeters: number;
 }
 
+/**
+ * Israeli water tariffs guarantee every housing unit at least a 2-person
+ * allowance regardless of how few people are actually registered there —
+ * e.g. Yuval Lim's published tariff: "לא פחות מ-14 מ"ק לחודשיים ליחידת דיור
+ * גם אם מתגוררים בה דרך קבע פחות משתי נפשות" (not less than 14 m3/2 months
+ * per housing unit, even with fewer than two permanent residents). 14/2 = 7,
+ * which is exactly 2 x the 3.5 m3/person/month allowance quoted alongside it
+ * — the floor is derived from the per-person allowance, not an independent
+ * number.
+ */
+const MINIMUM_HOUSEHOLD_SIZE_FOR_ALLOWANCE = 2;
+
 /** The subsidized-rate threshold for this household, m3. */
 export function waterTariffThreshold(tiers: WaterTariffTiers): number {
-  return tiers.householdSize * tiers.allowancePerPersonCubicMeters;
+  return Math.max(tiers.householdSize, MINIMUM_HOUSEHOLD_SIZE_FOR_ALLOWANCE) * tiers.allowancePerPersonCubicMeters;
 }
 
 /**

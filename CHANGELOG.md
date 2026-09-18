@@ -11,6 +11,25 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-18
+
+### Fixed
+
+- `waterTariffThreshold` multiplied `WATER_TARIFF_HOUSEHOLD_SIZE` directly by
+  the per-person allowance, missing the law's floor: every housing unit is
+  guaranteed at least a 2-person allowance regardless of registered
+  headcount. Verified against Yuval Lim's published tariff text — "לא פחות
+  מ-14 מ"ק לחודשיים ליחידת דיור גם אם מתגוררים בה דרך קבע פחות משתי נפשות"
+  (not less than 14 m3/2 months per housing unit, even with fewer than two
+  permanent residents) — 14/2 = 7, exactly 2x the 3.5 m3/month per-person
+  figure quoted alongside it. Now `max(WATER_TARIFF_HOUSEHOLD_SIZE, 2) x
+  WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS`.
+- Docs now call out, prompted by an actual misconfiguration attempt:
+  published tariffs often quote the allowance per *two months* (Yuval Lim:
+  "7 מ"ק לנפש לחודשיים") while `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS`
+  needs the monthly figure (3.5) to match the monthly consumption metric
+  it's compared against.
+
 ## [0.4.0] - 2026-09-18
 
 ### Added
@@ -214,7 +233,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.1...v0.3.2
