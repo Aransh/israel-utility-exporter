@@ -11,6 +11,28 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-18
+
+### Fixed
+
+- Electricity's daily backfill no longer calls `DAILY` resolution at all.
+  Verified against a live account: `DAILY` resolution doesn't return a date
+  range — `fromDate` selects a single calendar day, and the response is
+  that day's 15-minute sub-readings, not one row per day across the
+  requested range. `MONTHLY` resolution, called once per month (already
+  needed for the monthly figure), already returns one period per calendar
+  day within the month with each day's real total, so daily and monthly
+  data now both come from the same call.
+- Fixed a date-attribution bug in that period parsing: `interval` is a true
+  UTC timestamp, and naively slicing it to `YYYY-MM-DD` misattributes any
+  entry in the last hours of the UTC day to the previous calendar day in a
+  timezone ahead of UTC (Israel included). Now parsed as a real instant and
+  converted to the local calendar date.
+- The Grafana dashboard's daily/weekly/monthly consumption panels now set
+  `spanNulls`/`lineInterpolation: stepAfter`, so once-a-day backfilled
+  points render as a connected step chart instead of isolated dots (the
+  default "Connect null values: Never" doesn't bridge gaps that wide).
+
 ## [0.3.2] - 2026-09-18
 
 ### Fixed
@@ -146,7 +168,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.2.2...v0.3.0
