@@ -361,6 +361,12 @@ node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, 
   estimates are backfilled — those are computed locally from today's tariff
   config and would misrepresent a historical day priced under a different
   rate.
+- Monthly consumption is written as a **running month-to-date total, one
+  sample per day** — the same thing the live gauge shows if scraped that
+  day — not a single point on the 1st carrying the whole month's eventual
+  total (which would misrepresent every earlier day, and wouldn't even be
+  visible unless the dashboard's time range happens to reach back to that
+  exact date, since one point every ~30 days is easy to scroll past).
 - The range you can actually backfill is **limited to whatever the underlying
   portal API itself still retains** — there's no way to go back further than
   that, regardless of `--days`/`--from`.
