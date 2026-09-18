@@ -75,14 +75,14 @@
       "description": "Only populated when WATER_PRICE_PER_CUBIC_METER is set (flat mode) or WATER_TARIFF_MODE=tiered is fully configured.",
       "gridPos": { "x": 16, "y": 1, "w": 8, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
+      "targets": [{ "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true }],
       "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "justifyMode": "auto"
       }
     },
@@ -232,14 +232,14 @@
       "description": "Only populated when ELECTRICITY_PRICE_PER_KWH or a tariff schedule is configured. In schedule mode this is a duration-weighted estimate, not a bill reconstruction — see README.",
       "gridPos": { "x": 12, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_electricity_cost_estimate_ils", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
+      "targets": [{ "expr": "israel_utility_electricity_cost_estimate_ils", "legendFormat": "Contract {{contract_id}}", "refId": "A", "instant": true }],
       "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "justifyMode": "auto"
       }
     },
@@ -250,7 +250,7 @@
       "description": "Only populated in ELECTRICITY_TARIFF_MODE=schedule. The duration-weighted blended ILS/kWh rate for today, given the configured time-of-use windows.",
       "gridPos": { "x": 18, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_electricity_effective_rate_ils_per_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
+      "targets": [{ "expr": "israel_utility_electricity_effective_rate_ils_per_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A", "instant": true }],
       "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 3, "noValue": "flat mode / not configured" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },

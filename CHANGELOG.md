@@ -29,6 +29,18 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   month-end consumption forecast, priced the same way (flat or tiered) as
   the existing month-to-date cost estimate, plus a matching Grafana panel.
 
+### Fixed
+
+- `prometheus/prometheus.yml.example`'s `scrape_interval` was `5m`, exactly
+  matching Prometheus's default 5m query `lookback_delta`. Any scrape landing
+  even a few seconds late left range queries — what Grafana's Stat panels use
+  by default — with no sample inside the lookback window, so a "current
+  value" panel like the cost estimate would intermittently render as
+  unconfigured/no-data, differently depending on the selected time range.
+  Lowered to `1m`, and the cost-estimate/effective-rate Stat panels now
+  query `instant: true` so they always reflect the latest value regardless
+  of the dashboard's selected time range.
+
 ## [0.3.3] - 2026-09-18
 
 ### Fixed
