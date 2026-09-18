@@ -34,14 +34,13 @@ export interface TariffWindow {
   days: Weekday[];
   /** "HH:MM", 24h. */
   start: string;
-  /** "HH:MM", 24h. Must be later than `start` — express an overnight window as two entries. */
+  /** "HH:MM", 24h. Earlier than `start` means the window wraps past midnight into the next day. Must not equal `start`. */
   end: string;
   /** 0-100. Percentage discount off `baseRatePerKwh` during this window. */
   discountPercent: number;
 }
 
 export interface TariffSchedule {
-  currency: string;
   baseRatePerKwh: number;
   windows: TariffWindow[];
 }
@@ -73,10 +72,9 @@ function validateSchedule(value: unknown, path: string): TariffSchedule {
   if (!Number.isFinite(baseRatePerKwh) || baseRatePerKwh <= 0) {
     throw new TariffScheduleError(`Tariff schedule at ${path}: "baseRatePerKwh" must be a positive number.`);
   }
-  const currency = typeof obj.currency === 'string' && obj.currency ? obj.currency : 'ILS';
   const rawWindows = Array.isArray(obj.windows) ? obj.windows : [];
   const windows = rawWindows.map((w, i) => validateWindow(w, i, path));
-  return { currency, baseRatePerKwh, windows };
+  return { baseRatePerKwh, windows };
 }
 
 function validateWindow(value: unknown, index: number, path: string): TariffWindow {
@@ -91,10 +89,9 @@ function validateWindow(value: unknown, index: number, path: string): TariffWind
   }
   const start = parseTimeOfDay(obj.start, `${label}.start`);
   const end = parseTimeOfDay(obj.end, `${label}.end`);
-  if (end <= start) {
+  if (end === start) {
     throw new TariffScheduleError(
-      `${label}: "end" (${String(obj.end)}) must be later than "start" (${String(obj.start)}) on the same day. ` +
-        'Express an overnight window as two entries instead.',
+      `${label}: "start" and "end" must not be equal — a zero-length window isn't valid.`,
     );
   }
   const discountPercent = Number(obj.discountPercent);
@@ -124,29 +121,45 @@ function parseTimeOfDay(value: unknown, label: string): number {
  */
 export function blendedRateForDay(schedule: TariffSchedule, date: Date): number {
   const weekday = WEEKDAYS[date.getDay()]!;
-  const applicable = schedule.windows.filter((w) => w.days.includes(weekday));
-  if (applicable.length === 0) {
-    return schedule.baseRatePerKwh;
-  }
+  const yesterday = WEEKDAYS[(date.getDay() + 6) % 7]!;
 
   const MINUTES_PER_DAY = 24 * 60;
   let discountedMinutes = 0;
   let totalDiscountedRate = 0; // sum of (rate * minutes) for discounted minutes, to allow differing discounts
   const covered = new Array<boolean>(MINUTES_PER_DAY).fill(false);
 
-  for (const window of applicable) {
-    const start = parseTimeOfDay(window.start, 'start');
-    const end = parseTimeOfDay(window.end, 'end');
-    const rate = schedule.baseRatePerKwh * (1 - window.discountPercent / 100);
-    for (let minute = start; minute < end; minute += 1) {
+  const applyRange = (rate: number, from: number, to: number): void => {
+    for (let minute = from; minute < to; minute += 1) {
       if (covered[minute]) {
-        // Overlapping windows for the same weekday: first-listed wins, so the
-        // schedule is deterministic rather than double-counting a minute.
+        // Overlapping windows: first-listed wins, so the schedule is
+        // deterministic rather than double-counting a minute.
         continue;
       }
       covered[minute] = true;
       discountedMinutes += 1;
       totalDiscountedRate += rate;
+    }
+  };
+
+  for (const window of schedule.windows) {
+    const start = parseTimeOfDay(window.start, 'start');
+    const end = parseTimeOfDay(window.end, 'end');
+    const rate = schedule.baseRatePerKwh * (1 - window.discountPercent / 100);
+
+    if (end > start) {
+      if (window.days.includes(weekday)) {
+        applyRange(rate, start, end);
+      }
+    } else {
+      // Overnight window: runs from `start` on a listed day through `end`
+      // the following day. On the listed day it covers `start` through
+      // midnight; on the day after, midnight through `end`.
+      if (window.days.includes(weekday)) {
+        applyRange(rate, start, MINUTES_PER_DAY);
+      }
+      if (window.days.includes(yesterday)) {
+        applyRange(rate, 0, end);
+      }
     }
   }
 
