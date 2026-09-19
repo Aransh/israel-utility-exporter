@@ -11,6 +11,27 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+### Changed
+
+- Removed the background sparkline from the "Water/Electricity Meter
+  Reading", "Water/Electricity Cost", "Water Rate vs Normal", and
+  "Effective Rate" stat panels — confirmed directly against a real
+  account's data that Grafana's stat-panel "Area" sparkline mode isn't
+  built to render a multi-day trend at all (even with dense, correctly
+  dated data behind it, a 30-day query collapses to a barely-visible
+  sliver at the panel's right edge), so pinning it to a short window
+  bought legibility at the cost of usefulness. The actual trend already
+  lives in the "Cumulative Meter Reading" panels below, which use a
+  normal Timeseries visualization built for that job.
+- Redesigned the "Water Cost"/"Water Rate vs Normal" and "Electricity
+  Cost"/"Effective Rate" rows: the rate stat panels were disproportionate
+  — half the row's width for a single percentage — so they're now
+  narrower, and a new "Water/Electricity Cost Trend (Month to Date)"
+  timeseries panel fills the freed space, plotting the month-to-date cost
+  against last month's final cost (and, for water, the portal's own
+  forecast) as an actual line graph across the dashboard's full selected
+  range.
+
 ## [0.6.3] - 2026-09-19
 
 ### Fixed
