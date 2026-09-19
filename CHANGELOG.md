@@ -82,6 +82,17 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   trend into a thin band. Fixed by setting `fieldMinMax: true` so each
   field's sparkline scales to its own range instead of sharing one across
   the whole panel.
+- The "Water/Electricity Collector Health" panels could read "No data" at
+  the dashboard's default 30-day range immediately after a fresh start (e.g.
+  right after clearing and backfilling the datastore), even though the
+  exporter's most recent scrape was healthy — a wide range query coarsens
+  its evaluation grid, and a single very recent sample can fall in the gap.
+  Narrowing the dashboard to a short range (e.g. 1 day) always showed the
+  correct status, confirming the data was fine and it was purely a query
+  artifact. Since this panel is a "is it up right now" indicator, it doesn't
+  make sense for it to depend on the dashboard's selected range at all —
+  fixed by pinning it to `timeFrom: 10m`, independent of the rest of the
+  dashboard, so it always evaluates against a fine-grained recent window.
 
 ## [0.6.0] - 2026-09-19
 

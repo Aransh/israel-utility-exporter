@@ -58,6 +58,7 @@
       "description": "Whether the last poll of the water portal succeeded.",
       "gridPos": { "x": 18, "y": 1, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "timeFrom": "10m",
       "targets": [{ "expr": "israel_utility_water_scrape_success", "refId": "A" }],
       "fieldConfig": {
         "defaults": {
@@ -238,6 +239,7 @@
       "description": "Whether the last poll of the IEC API succeeded.",
       "gridPos": { "x": 18, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "timeFrom": "10m",
       "targets": [{ "expr": "israel_utility_electricity_scrape_success", "refId": "A" }],
       "fieldConfig": {
         "defaults": {
