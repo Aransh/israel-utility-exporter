@@ -14,6 +14,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
+import { monthAbbreviation } from '../time/day.js';
+
 const APP_CLIENT_ID = process.env.IEC_CLIENT_ID || '0oaqf6zr7yEcQZqqt2p7';
 const CODE_CHALLENGE_METHOD = 'S256';
 const APP_REDIRECT_URI = process.env.IEC_REDIRECT_URI || 'com.iecrn:/';
@@ -532,6 +534,7 @@ export class IecClient {
       // day by day rather than only by today's rate.
       monthlyDailyConsumption: dailyBreakdown(monthly.periods),
       previousMonthDailyConsumption: dailyBreakdown(previousMonthly.periods),
+      previousMonthLabel: monthAbbreviation(previousMonthFrom),
       tokenExpiresAt: this.tokenExpiresAt(),
     };
   }
@@ -563,6 +566,8 @@ export interface ElectricitySnapshot {
   monthlyDailyConsumption: Array<{ date: string; consumption: number }>;
   /** Same as `monthlyDailyConsumption`, but for last calendar month, used to price its final cost for comparison. */
   previousMonthDailyConsumption: Array<{ date: string; consumption: number }>;
+  /** Short name (e.g. "Jul") of the calendar month `previousMonthDailyConsumption` covers. */
+  previousMonthLabel: string;
   /** Epoch seconds the current id_token expires at, for the token-expiry alert. */
   tokenExpiresAt: number | null;
 }

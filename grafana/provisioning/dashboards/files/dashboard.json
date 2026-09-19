@@ -116,9 +116,9 @@
       "gridPos": { "x": 0, "y": 7, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        { "expr": "last_over_time(israel_utility_water_cost_estimate_ils[3d])", "legendFormat": "Month to date (meter {{meter_id}})", "refId": "A" },
+        { "expr": "last_over_time(israel_utility_water_cost_estimate_ils[3d])", "legendFormat": "Month to date, ${__to:date:MMM} (meter {{meter_id}})", "refId": "A" },
         { "expr": "last_over_time(israel_utility_water_cost_estimate_forecast_ils[3d])", "legendFormat": "Forecast, month end (meter {{meter_id}})", "refId": "B" },
-        { "expr": "last_over_time(israel_utility_water_cost_estimate_previous_month_ils[3d])", "legendFormat": "Last month (meter {{meter_id}})", "refId": "C" }
+        { "expr": "last_over_time(israel_utility_water_cost_estimate_previous_month_ils[3d])", "legendFormat": "Last month, {{month}} (meter {{meter_id}})", "refId": "C" }
       ],
       "fieldConfig": {
         "defaults": {
@@ -137,7 +137,7 @@
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
-        "textMode": "auto",
+        "textMode": "value_and_name",
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center"
@@ -151,9 +151,9 @@
       "gridPos": { "x": 10, "y": 7, "w": 14, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        { "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Month to date (meter {{meter_id}})", "refId": "A" },
-        { "expr": "israel_utility_water_cost_estimate_forecast_ils", "legendFormat": "Forecast, month end (meter {{meter_id}})", "refId": "B" },
-        { "expr": "israel_utility_water_cost_estimate_previous_month_ils", "legendFormat": "Last month (meter {{meter_id}})", "refId": "C" }
+        { "expr": "last_over_time(israel_utility_water_cost_estimate_ils[3d])", "legendFormat": "Month to date (meter {{meter_id}})", "refId": "A" },
+        { "expr": "last_over_time(israel_utility_water_cost_estimate_forecast_ils[3d])", "legendFormat": "Forecast, month end (meter {{meter_id}})", "refId": "B" },
+        { "expr": "last_over_time(israel_utility_water_cost_estimate_previous_month_ils[3d])", "legendFormat": "Last month, {{month}} (meter {{meter_id}})", "refId": "C" }
       ],
       "fieldConfig": {
         "defaults": { "unit": "currencyILS", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } },
@@ -317,8 +317,8 @@
       "gridPos": { "x": 0, "y": 36, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        { "expr": "last_over_time(israel_utility_electricity_cost_estimate_monthly_ils[3d])", "legendFormat": "Month to date (contract {{contract_id}})", "refId": "A" },
-        { "expr": "last_over_time(israel_utility_electricity_cost_estimate_previous_month_ils[3d])", "legendFormat": "Last month (contract {{contract_id}})", "refId": "B" }
+        { "expr": "last_over_time(israel_utility_electricity_cost_estimate_monthly_ils[3d])", "legendFormat": "Month to date, ${__to:date:MMM} (contract {{contract_id}})", "refId": "A" },
+        { "expr": "last_over_time(israel_utility_electricity_cost_estimate_previous_month_ils[3d])", "legendFormat": "Last month, {{month}} (contract {{contract_id}})", "refId": "B" }
       ],
       "fieldConfig": {
         "defaults": {
@@ -337,7 +337,7 @@
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
-        "textMode": "auto",
+        "textMode": "value_and_name",
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center"
@@ -351,8 +351,8 @@
       "gridPos": { "x": 10, "y": 36, "w": 14, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        { "expr": "israel_utility_electricity_cost_estimate_monthly_ils", "legendFormat": "Month to date (contract {{contract_id}})", "refId": "A" },
-        { "expr": "israel_utility_electricity_cost_estimate_previous_month_ils", "legendFormat": "Last month (contract {{contract_id}})", "refId": "B" }
+        { "expr": "last_over_time(israel_utility_electricity_cost_estimate_monthly_ils[3d])", "legendFormat": "Month to date (contract {{contract_id}})", "refId": "A" },
+        { "expr": "last_over_time(israel_utility_electricity_cost_estimate_previous_month_ils[3d])", "legendFormat": "Last month, {{month}} (contract {{contract_id}})", "refId": "B" }
       ],
       "fieldConfig": {
         "defaults": { "unit": "currencyILS", "custom": { "spanNulls": true, "lineInterpolation": "stepAfter" } },

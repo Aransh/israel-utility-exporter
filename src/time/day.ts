@@ -50,3 +50,15 @@ export function enumerateMonthStarts(from: string, to: string): string[] {
   }
   return starts;
 }
+
+const MONTH_ABBREVIATIONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Short month name (e.g. "Jul") for a YYYY-MM or YYYY-MM-DD string. A fixed
+ * table instead of `toLocaleString` — deterministic regardless of the host's
+ * ICU data, and this project never needs anything but English abbreviations.
+ */
+export function monthAbbreviation(ymd: string): string {
+  const month = Number(ymd.slice(5, 7));
+  return MONTH_ABBREVIATIONS[month - 1]!;
+}

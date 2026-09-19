@@ -192,10 +192,10 @@ export class WaterCollector {
         waterGauges.costEstimateForecastIls.set(labels, forecastCost);
       }
     }
-    if (snapshot.previousMonth !== null) {
+    if (snapshot.previousMonth !== null && snapshot.previousMonthLabel !== null) {
       const previousMonthCost = this.costEstimate(snapshot.previousMonth);
       if (previousMonthCost !== null) {
-        waterGauges.costEstimatePreviousMonthIls.set(labels, previousMonthCost);
+        waterGauges.costEstimatePreviousMonthIls.set({ ...labels, month: snapshot.previousMonthLabel }, previousMonthCost);
       }
     }
   }

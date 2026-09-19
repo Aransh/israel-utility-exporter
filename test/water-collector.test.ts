@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import type { WaterConfig } from '../src/config.js';
 import type { Logger } from '../src/logger.js';
 import { registry } from '../src/metrics.js';
+import { monthAbbreviation, shiftDays } from '../src/time/day.js';
 import { WaterCollector } from '../src/water/collector.js';
 
 const METER_ID = 55123;
@@ -139,9 +140,13 @@ test('prices last calendar month\'s total separately from this month\'s, with th
 
   // this month: 5 m3 @ 3 = 15; last month: 8 m3 @ 3 = 24.
   const LABELS = 'meter_id="55123",meter_serial="SER1"';
+  const previousMonth = monthAbbreviation(shiftDays(`${currentMonthKey}-01`, -1));
   const body = await registry.metrics();
   assert.match(body, new RegExp(`israel_utility_water_cost_estimate_ils\\{${LABELS}\\} 15`));
-  assert.match(body, new RegExp(`israel_utility_water_cost_estimate_previous_month_ils\\{${LABELS}\\} 24`));
+  assert.match(
+    body,
+    new RegExp(`israel_utility_water_cost_estimate_previous_month_ils\\{${LABELS},month="${previousMonth}"\\} 24`),
+  );
 });
 
 test('logs the backfill hint on a genuine first run, and not again once data has been recorded', async () => {

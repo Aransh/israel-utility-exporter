@@ -10,7 +10,7 @@ import { ElectricityCollector } from '../src/electricity/collector.js';
 import { ReadingResolution } from '../src/electricity/iec-client.js';
 import type { Logger } from '../src/logger.js';
 import { registry } from '../src/metrics.js';
-import { dateToEpochSeconds } from '../src/time/day.js';
+import { dateToEpochSeconds, monthAbbreviation, shiftDays } from '../src/time/day.js';
 
 const VALID_ID = '000000000';
 const CONTRACT_ID = '900123456';
@@ -218,9 +218,13 @@ test('prices last calendar month\'s total separately from this month\'s, with th
   collector.stop();
 
   // this month: 5 kWh @ 2 = 10; last month: 8 kWh @ 2 = 16.
+  const previousMonth = monthAbbreviation(shiftDays(`${currentMonthKey}-01`, -1));
   const body = await registry.metrics();
   assert.match(body, new RegExp(`israel_utility_electricity_cost_estimate_monthly_ils\\{contract_id="${CONTRACT_ID}"\\} 10`));
-  assert.match(body, new RegExp(`israel_utility_electricity_cost_estimate_previous_month_ils\\{contract_id="${CONTRACT_ID}"\\} 16`));
+  assert.match(
+    body,
+    new RegExp(`israel_utility_electricity_cost_estimate_previous_month_ils\\{contract_id="${CONTRACT_ID}",month="${previousMonth}"\\} 16`),
+  );
 });
 
 test('retries persisting the flag on a later successful poll if an earlier write failed', async () => {

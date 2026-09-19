@@ -9,7 +9,35 @@ Each released version has a matching `vX.Y.Z` git tag; the release workflow uses
 the section below the matching heading as the GitHub release notes, so keep the
 headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
-## [Unreleased]
+## [0.6.6] - 2026-09-20
+
+### Added
+
+- `israel_utility_water_cost_estimate_previous_month_ils` and
+  `israel_utility_electricity_cost_estimate_previous_month_ils` now carry a
+  `month` label (e.g. `month="Jul"`) naming the calendar month the figure
+  covers. Previously the dashboard's "Last month" value had no way to say
+  *which* month it was — obvious when viewing "now", genuinely ambiguous
+  when browsing the dashboard to a past range. The "Water/Electricity Cost
+  Estimate" and "Cost Trend" panels now show it directly: "Last month, Jul".
+  "Month to date" gets the same treatment, but derived from the dashboard's
+  own selected range (`${__to:date:MMM}`) rather than a metric label, since
+  it isn't tied to a specific series the way "last month" is.
+
+### Changed
+
+- The "Water/Electricity Cost Estimate" stat panels now always show each
+  field's name alongside its value (`textMode: value_and_name`), not just
+  when multiple fields have data — previously, once "Last month"/"Forecast"
+  had no data for a browsed historical range (see below), the one
+  remaining field rendered as a bare number with no label at all.
+- Extended the `last_over_time(...[3d])` robustness fix from the stat
+  panels to the matching "Cost Trend" timeseries panels' "Month to date"
+  and "Forecast" queries too, for the same step/phase-alignment reason —
+  they happened to work in testing so far, but nothing guaranteed a
+  different panel width or zoom level wouldn't hit the same coarse-step
+  gap. "Last month" in the trend graphs is left as a plain query; wrapping
+  it doesn't help when the series doesn't reach that far back yet.
 
 ### Fixed
 

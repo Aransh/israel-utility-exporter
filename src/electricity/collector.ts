@@ -165,7 +165,7 @@ export class ElectricityCollector {
       snapshot.previousMonthDailyConsumption.map((day) => ({ date: parseYmdNoon(day.date), consumption: day.consumption })),
     );
     if (previousMonthCost !== null) {
-      electricityGauges.costEstimatePreviousMonthIls.set(labels, previousMonthCost);
+      electricityGauges.costEstimatePreviousMonthIls.set({ ...labels, month: snapshot.previousMonthLabel }, previousMonthCost);
     }
 
     if (snapshot.daily === null || !snapshot.dailyDate) {
