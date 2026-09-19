@@ -101,6 +101,12 @@ export const waterGauges = {
     labelNames: WATER_LABELS,
     registers: [registry],
   }),
+  costEstimatePreviousMonthIls: new Gauge({
+    name: 'israel_utility_water_cost_estimate_previous_month_ils',
+    help: "Last calendar month's final cost, priced the same way as israel_utility_water_cost_estimate_ils (i.e. with today's tariff config, not necessarily the one that applied last month). Only present when priced.",
+    labelNames: WATER_LABELS,
+    registers: [registry],
+  }),
   meterInfo: new Gauge({
     name: 'israel_utility_water_meter_info',
     help: 'Always 1. Carries the meter serial as a label for dashboard joins.',
@@ -160,6 +166,18 @@ export const electricityGauges = {
   costEstimateIls: new Gauge({
     name: 'israel_utility_electricity_cost_estimate_ils',
     help: 'Estimated cost of the most recently published day, ILS. Only present when a price or tariff schedule is configured.',
+    labelNames: ELECTRICITY_LABELS,
+    registers: [registry],
+  }),
+  costEstimateMonthlyIls: new Gauge({
+    name: 'israel_utility_electricity_cost_estimate_monthly_ils',
+    help: 'Estimated cost of this month-to-date consumption, ILS, each published day priced at its own rate and summed. Only present when a price or tariff schedule is configured.',
+    labelNames: ELECTRICITY_LABELS,
+    registers: [registry],
+  }),
+  costEstimatePreviousMonthIls: new Gauge({
+    name: 'israel_utility_electricity_cost_estimate_previous_month_ils',
+    help: "Last calendar month's final cost, priced the same way as israel_utility_electricity_cost_estimate_monthly_ils (i.e. with today's tariff config, not necessarily the one that applied last month). Only present when a price or tariff schedule is configured.",
     labelNames: ELECTRICITY_LABELS,
     registers: [registry],
   }),

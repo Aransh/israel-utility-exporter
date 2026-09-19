@@ -11,6 +11,78 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-19
+
+### Added
+
+- `israel_utility_electricity_cost_estimate_monthly_ils`: month-to-date
+  electricity cost, each published day priced at its own rate and summed —
+  unlike water's tiered cost, electricity's rate can vary day to day
+  (schedule mode), so this can't be derived from the month's total kWh
+  alone. Also backfilled by `backfill-cli.js`. The "Electricity Cost
+  Estimate (Newest Day)" dashboard panel now shows this month-to-date figure
+  instead, matching the "Water Cost" panel's treatment.
+- `israel_utility_water_cost_estimate_previous_month_ils` and
+  `israel_utility_electricity_cost_estimate_previous_month_ils`: last
+  calendar month's final cost, for comparison against the month-to-date
+  figure — priced with today's tariff, not necessarily the one that applied
+  last month, same caveat as everything else this exporter prices
+  historically. Live collectors only (one extra API call per poll to fetch
+  last month's total); not backfilled. Shown as a muted (gray, no sparkline)
+  third value in the "Water Cost" and "Electricity Cost (Month to Date)"
+  dashboard panels — Grafana stat panels don't support a smaller font per
+  value, only per-value color, so that's as visually secondary as it gets.
+
+### Fixed
+
+- `backfill-cli.js`'s interactive confirmation prompt read as broken English
+  ("Also backfill estimated the cumulative water meter reading...") — it was
+  missing an article before "estimated".
+- `backfill-cli.js`'s electricity meter-reading reconstruction logged a WARN
+  at every single month boundary it crossed ("no published consumption
+  before that date"), even though stopping there is the intended behavior —
+  each month reconstructs independently from its own dated reading (see
+  `reconstructElectricityMeterReading`), so it always runs out of same-month
+  data at the previous month's last day. That expected case now logs at
+  debug level with wording that says so; a stop anywhere else in the month
+  (a genuine gap) still logs a WARN.
+- The dashboard's cumulative meter-reading panels (water and electricity)
+  and their stat-panel sparklines rendered as disconnected dots instead of a
+  connected line/area, because the gap between two real samples is often
+  wider than Grafana's default null-gap heuristic tolerates for that field.
+  Both now set `spanNulls: true`.
+- The "Water/Electricity Meter Reading", "Water/Electricity Cost", and
+  "Effective Rate" stat panels never set an explicit `thresholds` color, so
+  they silently inherited Grafana's schema default (green below 80, red at
+  or above) — a plain meter reading or cost figure crossing 80 (in whatever
+  unit Prometheus stores it in, e.g. kWh for a MWh-displayed reading) turned
+  it red for no real reason. Confirmed against the actual numbers this
+  exporter produces once seeded with realistic demo data, rather than only
+  the small values that happened to stay under 80 in earlier testing. Fixed
+  by giving each an explicit, always-green threshold.
+- The "Water/Electricity Meter Reading", "Water/Electricity Cost", "Water
+  Rate vs Normal", and "Effective Rate" stat panels' sparklines (the
+  background trend behind the big number) silently rendered nothing once
+  their query's own time range grew past roughly 2 days — confirmed against
+  Grafana's own official server-side renderer and three different Grafana
+  versions (11.0.0 through 13.2.2), so this is a genuine limitation of
+  Grafana's stat-panel sparkline, not a misconfiguration or a rendering-tool
+  quirk. It's invisible on a freshly-provisioned demo dashboard (whose
+  default range is "Last 30 days") but the same silent cutoff applies to any
+  Prometheus data, real or synthetic. Fixed by pinning each of those panels
+  to `timeFrom: 2d`, independent of whatever range the rest of the dashboard
+  is showing — the same real per-minute Prometheus scrape data that made the
+  sparkline invisible at 30 days renders it fine at 2.
+- The "Water Cost" and "Electricity Cost (Month to Date)" panels' sparklines
+  for the "Month to date"/"Forecast" values rendered as a barely-visible
+  sliver even after the fix above, because a stat panel with multiple fields
+  auto-scales its sparklines' Y-axis using *all* fields' values by default —
+  including "Last month" (a much larger number that doesn't even draw a
+  sparkline itself, `graphMode: none`), which squashed the actually-relevant
+  trend into a thin band. Fixed by setting `fieldMinMax: true` so each
+  field's sparkline scales to its own range instead of sharing one across
+  the whole panel.
+
 ## [0.6.0] - 2026-09-19
 
 ### Added
@@ -321,7 +393,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.0...v0.4.1

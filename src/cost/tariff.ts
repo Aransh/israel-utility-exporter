@@ -267,6 +267,36 @@ export function electricityEffectiveRate(
   return config.pricePerKwh;
 }
 
+/**
+ * ILS cost of a day-by-day electricity breakdown, each day priced at its own
+ * `electricityEffectiveRate` and summed — the month-to-date figure
+ * `israel_utility_electricity_cost_estimate_monthly_ils` exposes, mirroring
+ * how `israel_utility_water_cost_estimate_ils` is already a month-to-date
+ * total for water. Unlike water's tiered pricing, electricity's rate can
+ * differ day to day (schedule mode), so this can't be derived from the
+ * month's total kWh alone the way `waterCostEstimate` can — it needs the
+ * per-day breakdown. Shared by the live electricity collector and the
+ * backfill CLI. Returns null when unpriced (same condition under which
+ * `electricityEffectiveRate` returns null for every day).
+ */
+export function electricityMonthlyCostEstimate(
+  config: ElectricityPricingConfig,
+  schedule: TariffSchedule | null,
+  dailyConsumptionKwh: Array<{ date: Date; consumption: number }>,
+): number | null {
+  if (!schedule && config.pricePerKwh === null) {
+    return null;
+  }
+  let total = 0;
+  for (const { date, consumption } of dailyConsumptionKwh) {
+    const rate = electricityEffectiveRate(config, schedule, date);
+    if (rate !== null) {
+      total += consumption * rate;
+    }
+  }
+  return total;
+}
+
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

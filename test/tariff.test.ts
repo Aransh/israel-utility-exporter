@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import {
   blendedRateForDay,
   effectiveWaterRate,
+  electricityMonthlyCostEstimate,
   loadTariffSchedule,
   TariffScheduleError,
   tieredWaterCost,
@@ -188,4 +189,31 @@ test('effectiveWaterRate is the blended cost-per-m3 once above the threshold', (
   assert.equal(effectiveWaterRate(TIERS, consumption), expected);
   assert.ok(effectiveWaterRate(TIERS, consumption) > TIERS.normalRatePerCubicMeter);
   assert.ok(effectiveWaterRate(TIERS, consumption) < TIERS.excessRatePerCubicMeter);
+});
+
+test('electricityMonthlyCostEstimate is null when unpriced (no flat price, no schedule)', () => {
+  const result = electricityMonthlyCostEstimate({ pricePerKwh: null }, null, [{ date: THURSDAY, consumption: 5 }]);
+  assert.equal(result, null);
+});
+
+test('electricityMonthlyCostEstimate sums each day at the flat price in flat mode', () => {
+  const result = electricityMonthlyCostEstimate({ pricePerKwh: 2 }, null, [
+    { date: THURSDAY, consumption: 5 },
+    { date: FRIDAY, consumption: 3 },
+  ]);
+  assert.equal(result, 5 * 2 + 3 * 2);
+});
+
+test('electricityMonthlyCostEstimate sums each day at that day\'s own blended rate in schedule mode', () => {
+  const path = scheduleFile({
+    baseRatePerKwh: 2,
+    windows: [{ days: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'], start: '17:00', end: '23:00', discountPercent: 50 }],
+  });
+  const schedule = loadTariffSchedule(path);
+  const result = electricityMonthlyCostEstimate({ pricePerKwh: null }, schedule, [
+    { date: THURSDAY, consumption: 5 },
+    { date: FRIDAY, consumption: 3 },
+  ]);
+  const expected = 5 * blendedRateForDay(schedule, THURSDAY) + 3 * blendedRateForDay(schedule, FRIDAY);
+  assert.equal(result, expected);
 });

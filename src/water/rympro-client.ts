@@ -94,6 +94,8 @@ export interface MeterSnapshot {
   weeklyDaysElapsed: number;
   /** Consumption so far this month, m³. Null if no reading yet. */
   monthly: number | null;
+  /** Last calendar month's total consumption, m³. Null if unavailable. */
+  previousMonth: number | null;
   /** Forecast consumption for the full month, m³. Null if unavailable. */
   forecast: number | null;
   /** Physical meter serial, when reported. */
@@ -210,6 +212,10 @@ export class RymProClient {
       const daily = published[0] ?? { value: null, date: null };
       const week = this.weeklyTotal(published, today);
       const monthly = await this.monthlyConsumption(meterCount, today);
+      // Any date within last calendar month works — the endpoint keys off
+      // the month the date falls in (see `monthlyConsumption`'s own doc
+      // comment) — so the last day of the previous month is as good as any.
+      const previousMonth = await this.monthlyConsumption(meterCount, shiftDays(`${today.slice(0, 7)}-01`, -1));
       const forecast = await this.forecast(meterCount);
 
       snapshots.push({
@@ -222,6 +228,7 @@ export class RymProClient {
         weeklyDaysCounted: week.counted,
         weeklyDaysElapsed: week.elapsed,
         monthly,
+        previousMonth,
         forecast,
         serial: typeof meter.meterId === 'string' ? meter.meterId : undefined,
       });
