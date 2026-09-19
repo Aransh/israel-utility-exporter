@@ -5,7 +5,7 @@ import type { ElectricityConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { electricityGauges } from '../metrics.js';
 import { readJsonFile, writeJsonFileAtomic } from '../state/atomic-file.js';
-import { dateToEpochSeconds, parseYmdNoon } from '../time/day.js';
+import { dateToEpochSeconds, MONTH_ABBREVIATIONS, parseYmdNoon } from '../time/day.js';
 import { type ElectricitySnapshot, IECError, IECLoginError, IecClient } from './iec-client.js';
 
 const TOKEN_NOT_FOUND_ADVICE =
@@ -159,13 +159,34 @@ export class ElectricityCollector {
       electricityGauges.costEstimateMonthlyIls.set(labels, monthlyCost);
     }
 
-    const previousMonthCost = electricityMonthlyCostEstimate(
-      this.config,
-      this.tariffSchedule,
-      snapshot.previousMonthDailyConsumption.map((day) => ({ date: parseYmdNoon(day.date), consumption: day.consumption })),
-    );
+    // `electricityMonthlyCostEstimate` returns 0, not null, for a genuinely
+    // empty day list (e.g. the account didn't exist last month yet) whenever
+    // pricing is configured — checked explicitly here so that case is left
+    // unset rather than shown as a misleading "last month cost ₪0" (the same
+    // guard the backfill CLI applies for the same reason).
+    const previousMonthCost =
+      snapshot.previousMonthDailyConsumption.length > 0
+        ? electricityMonthlyCostEstimate(
+            this.config,
+            this.tariffSchedule,
+            snapshot.previousMonthDailyConsumption.map((day) => ({ date: parseYmdNoon(day.date), consumption: day.consumption })),
+          )
+        : null;
+    // `month` is a label value that changes over time, unlike every other
+    // label on this gauge — without pruning every other possible value,
+    // each calendar month's entry would stick around forever (a Gauge
+    // never forgets a label combination it was once `.set()` with), so
+    // scrapes a year from now would show up to 12 stale "previous month"
+    // series at once instead of just the current one. Pruned unconditionally
+    // (not only when `previousMonthCost` is set) so a month with no data of
+    // its own doesn't leave an *older* month's entry stuck around either.
+    for (const month of MONTH_ABBREVIATIONS) {
+      if (month !== snapshot.previousMonthLabel || previousMonthCost === null) {
+        electricityGauges.costEstimatePreviousMonthIls.remove({ ...labels, month });
+      }
+    }
     if (previousMonthCost !== null) {
-      electricityGauges.costEstimatePreviousMonthIls.set(labels, previousMonthCost);
+      electricityGauges.costEstimatePreviousMonthIls.set({ ...labels, month: snapshot.previousMonthLabel }, previousMonthCost);
     }
 
     if (snapshot.daily === null || !snapshot.dailyDate) {

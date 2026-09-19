@@ -315,7 +315,7 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` | The configured below-allowance rate itself, including VAT, for comparison against the effective rate above. Tiered tariff mode only. |
 | `israel_utility_water_cost_estimate_ils` | Month-to-date cost, if priced (flat or tiered), including VAT. |
 | `israel_utility_water_cost_estimate_forecast_ils` | Estimated cost of the portal's own month-end forecast, priced the same way. |
-| `israel_utility_water_cost_estimate_previous_month_ils` | Last calendar month's final cost, priced the same way (today's tariff, not necessarily last month's). Not backfilled — live collector only. |
+| `israel_utility_water_cost_estimate_previous_month_ils` | Last calendar month's final cost, priced the same way (today's tariff, not necessarily last month's). Carries a `month` label (e.g. `month="Jul"`) naming the calendar month it covers. |
 | `israel_utility_water_meter_info` | Always 1; carries `meter_serial` for dashboard joins. |
 | `israel_utility_water_scrape_success` / `..._last_success_timestamp_seconds` / `..._consecutive_failures` | Collector health. |
 
@@ -330,7 +330,7 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_electricity_effective_rate_ils_per_kwh` | Today's blended rate, including VAT — schedule tariff mode only. |
 | `israel_utility_electricity_cost_estimate_ils` | Estimated cost of the newest published day, if priced, including VAT. |
 | `israel_utility_electricity_cost_estimate_monthly_ils` | Month-to-date cost, if priced, including VAT — each published day priced at its own rate and summed. |
-| `israel_utility_electricity_cost_estimate_previous_month_ils` | Last calendar month's final cost, priced the same way (today's tariff, not necessarily last month's). Not backfilled — live collector only. |
+| `israel_utility_electricity_cost_estimate_previous_month_ils` | Last calendar month's final cost, priced the same way (today's tariff, not necessarily last month's). Carries a `month` label (e.g. `month="Jul"`) naming the calendar month it covers. |
 | `israel_utility_electricity_token_expires_timestamp_seconds` | When the current session token expires. |
 | `israel_utility_electricity_contract_info` | Always 1; carries `contract_number`/`address` for dashboard joins. |
 | `israel_utility_electricity_scrape_success` / `..._last_success_timestamp_seconds` / `..._consecutive_failures` | Collector health. |
@@ -457,6 +457,15 @@ non-interactive/cron context — without one, it defaults to skipping them).
   (`israel_utility_water_consumption_forecast_liters` and
   `israel_utility_water_cost_estimate_forecast_ils`) are never backfilled —
   a forecast is inherently forward-looking and has no historical equivalent.
+- **The previous-month cost gauges are also backfilled**
+  (`israel_utility_water_cost_estimate_previous_month_ils`,
+  `israel_utility_electricity_cost_estimate_previous_month_ils`), derived
+  from one calendar month before wherever the backfill range starts — an
+  extra month water already fetches as part of its single combined range,
+  and electricity fetches with one extra API call up front, then reuses
+  from each loop iteration onward. A month whose predecessor has no data at
+  all (e.g. the account didn't exist yet) is left unset rather than written
+  as a misleading ₪0.
 - **Optionally, the cumulative meter reading can also be backfilled** —
   `israel_utility_water_meter_reading_cubic_meters` and
   `israel_utility_electricity_meter_reading_kwh`. Both walk backward from a

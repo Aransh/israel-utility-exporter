@@ -6,7 +6,7 @@ import type { WaterConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { waterGauges } from '../metrics.js';
 import { createWriteQueue, readJsonFile, writeJsonFileAtomic } from '../state/atomic-file.js';
-import { dateToEpochSeconds } from '../time/day.js';
+import { dateToEpochSeconds, MONTH_ABBREVIATIONS } from '../time/day.js';
 import {
   InvalidCredentialsError,
   type MeterSnapshot,
@@ -192,11 +192,22 @@ export class WaterCollector {
         waterGauges.costEstimateForecastIls.set(labels, forecastCost);
       }
     }
-    if (snapshot.previousMonth !== null) {
-      const previousMonthCost = this.costEstimate(snapshot.previousMonth);
-      if (previousMonthCost !== null) {
-        waterGauges.costEstimatePreviousMonthIls.set(labels, previousMonthCost);
+    const previousMonthCost = snapshot.previousMonth !== null ? this.costEstimate(snapshot.previousMonth) : null;
+    // `month` is a label value that changes over time, unlike every other
+    // label on this gauge — without pruning every other possible value,
+    // each calendar month's entry would stick around forever (a Gauge
+    // never forgets a label combination it was once `.set()` with), so
+    // scrapes a year from now would show up to 12 stale "previous month"
+    // series at once instead of just the current one. Pruned unconditionally
+    // (not only when there's a new cost to set) so a month with no data of
+    // its own doesn't leave an *older* month's entry stuck around either.
+    for (const month of MONTH_ABBREVIATIONS) {
+      if (month !== snapshot.previousMonthLabel || previousMonthCost === null) {
+        waterGauges.costEstimatePreviousMonthIls.remove({ ...labels, month });
       }
+    }
+    if (previousMonthCost !== null && snapshot.previousMonthLabel !== null) {
+      waterGauges.costEstimatePreviousMonthIls.set({ ...labels, month: snapshot.previousMonthLabel }, previousMonthCost);
     }
   }
 

@@ -103,8 +103,8 @@ export const waterGauges = {
   }),
   costEstimatePreviousMonthIls: new Gauge({
     name: 'israel_utility_water_cost_estimate_previous_month_ils',
-    help: "Last calendar month's final cost, priced the same way as israel_utility_water_cost_estimate_ils (i.e. with today's tariff config, not necessarily the one that applied last month). Only present when priced.",
-    labelNames: WATER_LABELS,
+    help: "Last calendar month's final cost, priced the same way as israel_utility_water_cost_estimate_ils (i.e. with today's tariff config, not necessarily the one that applied last month). Only present when priced. Carries a `month` label (e.g. \"Jul\") naming the calendar month it covers, for dashboards.",
+    labelNames: [...WATER_LABELS, 'month'],
     registers: [registry],
   }),
   meterInfo: new Gauge({
@@ -177,8 +177,8 @@ export const electricityGauges = {
   }),
   costEstimatePreviousMonthIls: new Gauge({
     name: 'israel_utility_electricity_cost_estimate_previous_month_ils',
-    help: "Last calendar month's final cost, priced the same way as israel_utility_electricity_cost_estimate_monthly_ils (i.e. with today's tariff config, not necessarily the one that applied last month). Only present when a price or tariff schedule is configured.",
-    labelNames: ELECTRICITY_LABELS,
+    help: "Last calendar month's final cost, priced the same way as israel_utility_electricity_cost_estimate_monthly_ils (i.e. with today's tariff config, not necessarily the one that applied last month). Only present when a price or tariff schedule is configured. Carries a `month` label (e.g. \"Jul\") naming the calendar month it covers, for dashboards.",
+    labelNames: [...ELECTRICITY_LABELS, 'month'],
     registers: [registry],
   }),
   tokenExpiresTimestampSeconds: new Gauge({

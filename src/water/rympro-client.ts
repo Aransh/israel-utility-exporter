@@ -7,6 +7,8 @@
  * with the HomeKit-facing pieces stripped out.
  */
 
+import { monthAbbreviation } from '../time/day.js';
+
 const BASE_URL = 'https://eu-customerportal-api.harmonyencoremdm.com';
 const CONSUMER_URL = `${BASE_URL}/consumer`;
 const CONSUMPTION_URL = `${BASE_URL}/consumption`;
@@ -96,6 +98,8 @@ export interface MeterSnapshot {
   monthly: number | null;
   /** Last calendar month's total consumption, m³. Null if unavailable. */
   previousMonth: number | null;
+  /** Short name (e.g. "Jul") of the calendar month `previousMonth` covers. Null when `previousMonth` is null. */
+  previousMonthLabel: string | null;
   /** Forecast consumption for the full month, m³. Null if unavailable. */
   forecast: number | null;
   /** Physical meter serial, when reported. */
@@ -215,7 +219,8 @@ export class RymProClient {
       // Any date within last calendar month works — the endpoint keys off
       // the month the date falls in (see `monthlyConsumption`'s own doc
       // comment) — so the last day of the previous month is as good as any.
-      const previousMonth = await this.monthlyConsumption(meterCount, shiftDays(`${today.slice(0, 7)}-01`, -1));
+      const previousMonthDate = shiftDays(`${today.slice(0, 7)}-01`, -1);
+      const previousMonth = await this.monthlyConsumption(meterCount, previousMonthDate);
       const forecast = await this.forecast(meterCount);
 
       snapshots.push({
@@ -229,6 +234,7 @@ export class RymProClient {
         weeklyDaysElapsed: week.elapsed,
         monthly,
         previousMonth,
+        previousMonthLabel: previousMonth !== null ? monthAbbreviation(previousMonthDate) : null,
         forecast,
         serial: typeof meter.meterId === 'string' ? meter.meterId : undefined,
       });
