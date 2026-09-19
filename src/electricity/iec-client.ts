@@ -11,9 +11,9 @@
  * console logging in favour of an injected logger.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile } from 'node:fs/promises';
 
+import { writeJsonFileAtomic } from '../state/atomic-file.js';
 import { monthAbbreviation } from '../time/day.js';
 
 const APP_CLIENT_ID = process.env.IEC_CLIENT_ID || '0oaqf6zr7yEcQZqqt2p7';
@@ -321,8 +321,7 @@ export class IecClient {
     if (!this.token) {
       throw new IECLoginError(-1, 'No token to save');
     }
-    await mkdir(dirname(filePath), { recursive: true });
-    await writeFile(filePath, JSON.stringify(this.token, null, 2), { mode: 0o600 });
+    await writeJsonFileAtomic(filePath, this.token);
   }
 
   /** Seconds since the epoch at which the current id_token expires, or null if not logged in. */

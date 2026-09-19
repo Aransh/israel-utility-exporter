@@ -116,7 +116,7 @@ empty `/metrics` silently.
 | `DATA_DIR` | `/data` | Where session/token state is persisted. Mount a volume here. |
 | `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
 | `WEB_CONFIG_FILE` | — | Path to a YAML file enabling TLS and/or Basic Auth. See [TLS & Basic Auth](#tls--basic-auth) below. |
-| `VAT_PERCENT` | `18` | Grosses up every configured price below (`WATER_PRICE_PER_CUBIC_METER`, `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`, and a schedule file's `baseRatePerKwh`) by this percentage, so you can enter the pre-VAT rate straight off a bill — see [Cost estimation](#cost-estimation). Applies equally to the live collectors and the backfill CLI. |
+| `VAT_PERCENT` | `18` | Grosses up every configured price below by this percentage — enter the pre-VAT rate. See [Cost estimation](#cost-estimation). |
 | `WATER_ENABLED` | `false` | Set `true` to enable the water collector. |
 | `WATER_EMAIL` / `WATER_PASSWORD` | — | RYM Pro portal credentials. Required if `WATER_ENABLED`. |
 | `WATER_POLL_INTERVAL_MINUTES` | `90` | Floored at 15 — the meter itself updates at most hourly, and polling faster risks the portal's rate limit. |
@@ -125,7 +125,7 @@ empty `/metrics` silently.
 | `WATER_PRICE_PER_CUBIC_METER` | — | ILS. Used when `flat`; also the tiered mode's below-allowance rate. If set (flat) or fully configured (tiered), enables `israel_utility_water_cost_estimate_ils`. |
 | `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER` | — | ILS. Used when `tiered` — the rate above the household's allowance. |
 | `WATER_TARIFF_HOUSEHOLD_SIZE` | — | Positive integer. Used when `tiered` — number of people registered on the water account. Treated as at least 2 — see [Cost estimation](#cost-estimation). |
-| `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` | — | m3/person/**month**. Used when `tiered`. Published tariffs often quote this per *two months* instead — see [Cost estimation](#cost-estimation) before copying a number straight off a tariff page. |
+| `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` | — | m3/person/**month**. Used when `tiered` — see [Cost estimation](#cost-estimation) for a monthly-vs-bimonthly gotcha. |
 | `ELECTRICITY_ENABLED` | `false` | Set `true` to enable the electricity collector. |
 | `ELECTRICITY_ID` | — | Your 9-digit Israeli ID. Required if `ELECTRICITY_ENABLED`. |
 | `ELECTRICITY_TOKEN_FILE` | `$DATA_DIR/iec-token.json` | Written by the login CLI; loaded/refreshed by the collector. |
@@ -173,118 +173,39 @@ matches — override it in your own compose file or `docker run`, e.g.
 
 Both collectors can turn consumption into an estimated cost — entirely
 optional, and off by default. Israel doesn't publish tariffs via any API, so
-you supply the price yourself:
+you supply the price yourself.
 
-**Enter the pre-VAT rate — VAT is added automatically.** Every price you
-configure below (`WATER_PRICE_PER_CUBIC_METER`,
-`WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`, a
-schedule file's `baseRatePerKwh`) is treated as the **pre-VAT** rate;
-`VAT_PERCENT` (18% by default — Israel's standard rate) grosses it up before
-it reaches any cost or rate metric, for both utilities alike. This is
-straightforward for electricity — a real IEC-supplier bill's per-kWh line
-items are explicitly labeled "לא כולל מע"מ" (not including VAT), so the
-pre-VAT number is exactly what's on the bill. **Water is the opposite
-convention**: the Water Authority's own published tariffs are already
-VAT-inclusive (see the worked example under volume-tiered pricing below for
-how to back out the pre-VAT number before configuring it). Set
-`VAT_PERCENT=0` if you'd rather enter an already VAT-inclusive rate
-directly, or you're VAT-exempt. All of
-`israel_utility_water_cost_estimate_ils`,
-`israel_utility_water_effective_rate_ils_per_cubic_meter`,
-`israel_utility_water_tariff_normal_rate_ils_per_cubic_meter`,
-`israel_utility_electricity_cost_estimate_ils`,
-`israel_utility_electricity_cost_estimate_monthly_ils`, and
-`israel_utility_electricity_effective_rate_ils_per_kwh` are VAT-inclusive as
-a result — as is anything the backfill CLI writes for them.
+**Enter the pre-VAT rate — `VAT_PERCENT` (default `18`) grosses it up
+automatically** for every configured price
+(`WATER_PRICE_PER_CUBIC_METER`, `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER`,
+`ELECTRICITY_PRICE_PER_KWH`, a schedule file's `baseRatePerKwh`), on both the
+live collectors and the backfill CLI. Electricity bills already quote the
+pre-VAT rate; **water tariffs are published VAT-inclusive**, so back that
+number out first — see [docs/cost-estimation.md](docs/cost-estimation.md) for
+a worked example. Set `VAT_PERCENT=0` to enter an already VAT-inclusive rate
+directly. The resulting cost/rate metrics (see [Metrics](#metrics)) are all
+VAT-inclusive, as is anything the backfill CLI writes for them.
 
 - **Flat pricing** (`WATER_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`):
-  one price × the consumption figure. The right choice if you're not on a
-  time-of-use electricity plan, or want a simple average.
+  one price × the consumption figure.
 - **Time-of-use schedule** (electricity only, `ELECTRICITY_TARIFF_MODE=schedule`):
-  models Israeli "taoz" plans like "70% off 17:00-23:00" offered by several
-  private electricity suppliers. See `tariff-schedule.example.json`:
-
-  ```json
-  {
-    "baseRatePerKwh": 0.6115,
-    "windows": [
-      { "days": ["sun", "mon", "tue", "wed", "thu"], "start": "17:00", "end": "23:00", "discountPercent": 70 },
-      { "days": ["fri", "sat"], "start": "00:00", "end": "23:59", "discountPercent": 20 }
-    ]
-  }
-  ```
-
-  **Read this before trusting the number it produces.** IEC's own API never
-  reports consumption finer than a whole published day's total kWh — there is
-  no hourly breakdown to attribute to specific tariff windows (confirmed
-  against `py-iec-api`'s and the Home Assistant IEC integration's source: they
-  synthesize 24 even hourly buckets from a daily/monthly total when finer data
-  is missing, rather than having real per-hour readings — see
-  `THIRD-PARTY-NOTICES.md`). So instead of pretending to know when in the day
-  you used electricity, the exporter computes a **duration-weighted blended
-  rate for that calendar day** — e.g. 6 discounted hours + 18 base hours,
-  averaged — and multiplies the day's total kWh by that single number. This
-  assumes consumption is roughly even across the day. It is a genuinely useful
-  estimate for comparing plans or tracking a trend, but it is **not a bill
-  reconstruction** — expect it to diverge from your actual invoice, more so the
-  more your usage is concentrated in or out of the discount window.
-  `israel_utility_electricity_effective_rate_ils_per_kwh` exposes the blended
-  rate itself, so the assumption is visible rather than hidden inside a cost
-  figure.
-- **Volume-tiered pricing** (water only, `WATER_TARIFF_MODE=tiered`): water
-  has no time-of-use concept in Israel — tariffs are volume-tiered instead, a
-  subsidized allowance per person registered on the account, then a higher
-  rate beyond it (see e.g. a local water corporation's published tariffs,
-  like [Yuval Lim's](https://www.yuvallim.co.il/תעריפי-מים-וביוב/)). Configure:
-  - `WATER_PRICE_PER_CUBIC_METER` — the rate below the allowance (the same
-    variable flat mode uses).
-  - `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER` — the rate above it.
-  - `WATER_TARIFF_HOUSEHOLD_SIZE` — people registered on the account.
-  - `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` — m3/person/month before
-    the excess rate kicks in.
-
-  This month's threshold is `max(WATER_TARIFF_HOUSEHOLD_SIZE, 2) x
-  WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` — Israeli water tariffs
-  guarantee every housing unit at least a 2-person allowance regardless of
-  how few people are registered there, so a solo resident isn't shortchanged
-  (this floor is fixed by law, not a separate variable). Consumption up to
-  the threshold is priced at the normal rate, the rest at the excess rate.
-  `israel_utility_water_tariff_threshold_cubic_meters` and
-  `israel_utility_water_effective_rate_ils_per_cubic_meter` expose the
-  threshold and the resulting blended ILS/m3 rate, so — as with electricity's
-  schedule mode — neither is hidden inside the cost figure.
-  `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` also exposes
-  the configured below-allowance rate itself, so a dashboard can flag once
-  the blended rate has crept above it, without hardcoding your rate into the
-  dashboard.
-
-  **Get the actual numbers from your own water corporation's published
-  tariff and account details** — they change periodically and this exporter
-  doesn't fetch them. Watch the units: `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS`
-  is m3/person **per month** (matching `israel_utility_water_consumption_monthly_liters`),
-  but published tariffs often quote it per **two months** instead — e.g.
-  Yuval Lim's page says "עד 7 מ"ק לנפש **לחודשיים**" (up to 7 m3/person per
-  two months) right next to "3.5 מ״ק **לחודש**" (3.5 m3/month) for the same
-  allowance; use the monthly figure (`3.5`), not the bimonthly one (`7`), or
-  you'll double the real threshold.
-
-  One more unit to watch: unlike electricity, Israel's Water Authority
-  publishes its water tariffs **already including VAT** (its own rate sheet
-  labels them "כוללים מע"מ") — the opposite convention from an electricity
-  bill's per-kWh line items. Since `VAT_PERCENT` grosses up every price
-  here the same way regardless of utility (see above), paste the **pre-VAT**
-  number, not the published one, or VAT ends up applied twice. A worked
-  example: Yuval Lim's page lists `8.51`/`15.62` ₪/m3 as its published,
-  VAT-inclusive rates; divide each by `1 + VAT_PERCENT/100` (1.18 at the
-  default 18%) to get the pre-VAT numbers to configure:
-  `WATER_PRICE_PER_CUBIC_METER=7.21`,
-  `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER=13.24`,
-  `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS=3.5`. Also note this is
-  still a calendar-month approximation of a tariff actually billed over a
-  2-month cycle — usage concentrated near a bimonthly cycle boundary (e.g.
-  low one calendar month, high the next) can price slightly differently
-  than the real bill, which averages allowance use across the full 2-month
-  period rather than resetting it every calendar month.
+  models Israeli "taoz" plans like "70% off 17:00-23:00" — see
+  `tariff-schedule.example.json`. IEC's API has no hourly breakdown, so this
+  is a **duration-weighted blended daily rate**, not a bill reconstruction —
+  see [docs/cost-estimation.md](docs/cost-estimation.md) for the detail and
+  its limits.
+- **Volume-tiered pricing** (water only, `WATER_TARIFF_MODE=tiered`): a
+  subsidized per-person allowance, then a higher rate beyond it. Configure
+  `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER`, `WATER_TARIFF_HOUSEHOLD_SIZE`,
+  and `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` alongside
+  `WATER_PRICE_PER_CUBIC_METER` (the below-allowance rate). This month's
+  threshold is `max(WATER_TARIFF_HOUSEHOLD_SIZE, 2) x
+  WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS` (Israeli law guarantees
+  every housing unit at least a 2-person allowance). Get the real numbers
+  from your own water corporation's published tariff — see
+  [docs/cost-estimation.md](docs/cost-estimation.md) for units to watch
+  (monthly vs. bimonthly allowance figures, the VAT convention) and a worked
+  example.
 
 ## Metrics
 
@@ -339,84 +260,57 @@ Plus `israel_utility_exporter_build_info{version="..."}`.
 
 ## Grafana dashboard & Prometheus alerts
 
-![Water row: meter reading, collector health, cost estimate with a month-to-date sparkline, the effective rate as a percentage of the normal rate (turning orange once the excess tier kicks in), daily/weekly/monthly consumption, and the cumulative meter reading trend](docs/dashboard-water-pricing.png)
+![Water dashboard row: meter reading, collector health, cost estimate, effective rate vs. normal, and consumption](https://raw.githubusercontent.com/Aransh/israel-utility-exporter/main/docs/dashboard-water-pricing.png)
 
-![Electricity row: meter reading, collector health, cost estimate and effective rate (both with the same sparkline treatment as water), daily/monthly consumption, and the cumulative meter reading trend](docs/dashboard-electricity.png)
+![Electricity dashboard row: meter reading, collector health, cost estimate, effective rate, and consumption](https://raw.githubusercontent.com/Aransh/israel-utility-exporter/main/docs/dashboard-electricity.png)
 
 - `grafana/provisioning/dashboards/files/dashboard.json` — auto-provisioned by
-  `docker-compose.yml`, or import it manually into your own Grafana. Two
-  rows, Water and Electricity, each showing the cumulative meter trend,
-  daily/monthly consumption over time, cost estimate, and collector health —
-  a row simply shows "No data" if that collector is disabled. Each row's
-  meter-reading panel gets most of the width, since it's the one with a
-  sparkline worth seeing; collector health is just an Up/Down badge, so it
-  only gets a narrow strip rather than half the row. The water row's
-  pricing panels (top screenshot) show month-to-date cost and the
-  portal's forecast side by side with a sparkline of the trend, plus the
-  effective rate expressed as a percentage of the normal (below-allowance)
-  rate — 100% means every m3 so far is priced at the normal rate, and the
-  panel background turns orange once the month has spilled into the pricier
-  excess tier. Electricity's pricing row (bottom screenshot) is simpler —
-  no tiers, so no equivalent rate-vs-normal panel — but its cost estimate
-  gets the same sparkline treatment for visual consistency.
+  `docker-compose.yml`, or import it manually into your own Grafana. Two rows
+  (Water, Electricity), each with the cumulative meter trend, daily/monthly
+  consumption, cost estimate, and collector health — a row just shows "No
+  data" if that collector is disabled. Water's row also shows the effective
+  rate as a percentage of the normal rate, turning orange once the excess
+  tier kicks in.
 - `prometheus/alerts.yml` — two rule groups:
-  - **Health alerts** (safe to run as shipped): the exporter being
-    unreachable, either collector going stale (no successful poll in 6h) or
-    failing repeatedly, and the electricity token nearing expiry.
-  - **Budget alert examples** (illustrative thresholds — size them to your
-    own household before relying on them): daily/monthly consumption over a
-    limit, based on Israel's ~400 L/person/day and ~3.5 m³ (3500 L)/person/month
-    subsidized-allocation guidance. `WaterMonthlyConsumptionOverBudget` is the
-    exception — in `WATER_TARIFF_MODE=tiered` it compares directly against
-    `israel_utility_water_tariff_threshold_cubic_meters`, so it needs no
-    manual sizing.
+  - **Health alerts** (safe to run as shipped): exporter unreachable, a
+    collector going stale or failing repeatedly, electricity token nearing
+    expiry.
+  - **Budget alert examples** (illustrative thresholds — size to your own
+    household): daily/monthly consumption over a limit.
+    `WaterMonthlyConsumptionOverBudget` needs no manual sizing in tiered
+    mode — it compares directly against
+    `israel_utility_water_tariff_threshold_cubic_meters`.
 
 ## Behavior worth knowing
 
 - **The daily figure isn't always today's.** Both portals publish a day's
-  reading with a lag — sometimes a day or two. Both collectors look back up
-  to 7 days and report the newest day actually published, and
-  `*_covers_timestamp_seconds` tells you which day that is. A null/unpublished
-  reading is never reported as zero consumption.
+  reading with a lag of up to ~2 days. Both collectors report the newest day
+  actually published; `*_covers_timestamp_seconds` says which day that is. A
+  null/unpublished reading is never reported as zero.
 - **`WATER_WEEKLY_WINDOW=rolling` vs. `sunday`/`monday`**: the calendar-week
-  options reset on that weekday (so early in a new week the total is small
-  because little has been published yet, not because usage was low); `rolling`
-  is the trailing 7 days and never resets, so a threshold on it means the same
-  thing every day.
-- **Electricity data is inherently coarse.** IEC updates meter data roughly
-  every 1-2 days regardless of how often you poll — `ELECTRICITY_POLL_INTERVAL_MINUTES`
-  below ~60 gains nothing.
-- **Prometheus's `scrape_interval` is a different knob from either poll
-  interval above, and it has its own constraint that's unrelated to how
-  slowly the underlying data changes.** Prometheus's query engine only finds
-  a series if its newest sample is within `--query.lookback-delta` (default
-  5m) of the time being evaluated — older than that, and it's treated as
-  absent, even though the exporter would report the exact same value on the
-  next scrape. So `scrape_interval` must stay comfortably below 5m (the
-  default), or "current value" Stat panels can render as no-data/unconfigured
-  depending on exactly when they're queried — regardless of how rarely the
-  water/electricity poll cadence itself actually updates a value. Scraping
-  `/metrics` just reads an in-memory number, so it's nearly free; if you
-  deliberately want a slower `scrape_interval` anyway, raise Prometheus's
-  own `--query.lookback-delta` startup flag to comfortably exceed it instead
-  (that flag is global, so it also widens the blind spot for detecting a
-  genuinely dead target on every other job on that Prometheus).
-- **A rejected water password stops that collector, not the exporter.**
-  Retrying a bad password on a timer risks the portal's login lockout, so it
-  logs an error and stops polling water — fix `WATER_EMAIL`/`WATER_PASSWORD`
-  and restart. Electricity works the same way for an unrecoverable token: it
-  reports the problem and waits for you to re-run the login CLI, rather than
-  crash-looping the whole container.
+  options reset weekly (so early in a new week the total looks low because
+  little has published yet); `rolling` is a trailing 7 days that never resets.
+- **Electricity data is coarse.** IEC updates roughly every 1-2 days
+  regardless of poll frequency — `ELECTRICITY_POLL_INTERVAL_MINUTES` below
+  ~60 gains nothing.
+- **Keep Prometheus's `scrape_interval` comfortably under 5 minutes**
+  (its default `--query.lookback-delta`), or "current value" panels can
+  intermittently show no-data even though the value hasn't changed —
+  scraping `/metrics` is nearly free, so there's little cost to a fast
+  interval. Want a slower one anyway? Raise `--query.lookback-delta` to
+  match.
+- **A rejected water password stops that collector, not the exporter** — it
+  logs an error and stops polling rather than risking the portal's login
+  lockout by retrying. An unrecoverable electricity token behaves the same
+  way: it waits for you to re-run the login CLI instead of crash-looping.
 - **Everything else (rate limits, transient errors) holds the last known
-  reading** and keeps retrying on the next poll, rather than showing a gap.
+  reading** and retries on the next poll.
 
 ## Historical data backfill
 
-The exporter only ever surfaces the newest published day/week/month (see
-above) — data from before either collector's live lookback window, or from
-before the exporter was first deployed, is never backfilled automatically.
-Run the included CLI once (or whenever there's a gap to fill) to push
-historical data directly into your TSDB:
+The exporter only surfaces the newest published day/week/month (see above) —
+anything older, or from before the exporter was first deployed, needs the
+included CLI:
 
 ```bash
 node dist/backfill-cli.js --service all --days 90
@@ -424,111 +318,32 @@ node dist/backfill-cli.js --service electricity --from 2026-01-01 --to 2026-03-0
 node dist/backfill-cli.js --service water --days 30 --dry-run   # preview only, no write
 ```
 
-Running it interactively also asks whether to include **estimated** cumulative
-meter readings (see below); pass `--estimated-readings` or
-`--no-estimated-readings` to answer that up front instead (required in a
-non-interactive/cron context — without one, it defaults to skipping them).
+Writes via the standard Prometheus **remote_write** protocol (protobuf +
+Snappy), so `REMOTE_WRITE_URL` can point at Prometheus
+(`--web.enable-remote-write-receiver`), Thanos, Cortex, Mimir, or any
+compatible receiver. Requires `REMOTE_WRITE_URL` (except `--dry-run`) — see
+the [Configuration](#configuration) table for auth/TLS options.
 
-- **Match your scrape config's `job`/`instance` labels, or the graph will split
-  in two.** Those labels are assigned by Prometheus itself when it scrapes a
-  target — they're not part of `/metrics` — so a backfilled series has no
-  `job`/`instance` label unless you add it yourself, making it a *different*
-  series from the one your live scrapes produce for the same meter/contract.
-  Set `REMOTE_WRITE_EXTRA_LABELS` to whatever your scrape config uses, e.g.
-  for the `job_name`/target in `prometheus/prometheus.yml.example`:
-  `REMOTE_WRITE_EXTRA_LABELS=job=israel-utility-exporter,instance=israel-utility-exporter:9877`.
-- Backfills the **raw numbers the utility APIs report directly** (daily
-  consumption for both utilities, weekly consumption for water — electricity
-  has no weekly metric — and monthly consumption for both), plus, wherever a
-  tariff is configured, the **cost/rate metrics derived from them**
-  (`israel_utility_water_cost_estimate_ils`,
-  `israel_utility_water_tariff_threshold_cubic_meters`,
-  `israel_utility_water_effective_rate_ils_per_cubic_meter`,
-  `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter`,
-  `israel_utility_electricity_cost_estimate_ils`,
-  `israel_utility_electricity_cost_estimate_monthly_ils`,
-  `israel_utility_electricity_effective_rate_ils_per_kwh`). Those are priced
-  with **today's tariff config**, the same way the live collectors always
-  price the current month/day — there's no record of what a historical day's
-  rate actually was, so if your tariff (household size, per-m3 rate,
-  time-of-use schedule, …) changed since the period you're backfilling, the
-  resulting cost/rate samples for that period will reflect the current
-  config, not the one that actually applied then. The water forecast metrics
-  (`israel_utility_water_consumption_forecast_liters` and
-  `israel_utility_water_cost_estimate_forecast_ils`) are never backfilled —
-  a forecast is inherently forward-looking and has no historical equivalent.
-- **The previous-month cost gauges are also backfilled**
-  (`israel_utility_water_cost_estimate_previous_month_ils`,
-  `israel_utility_electricity_cost_estimate_previous_month_ils`), derived
-  from one calendar month before wherever the backfill range starts — an
-  extra month water already fetches as part of its single combined range,
-  and electricity fetches with one extra API call up front, then reuses
-  from each loop iteration onward. A month whose predecessor has no data at
-  all (e.g. the account didn't exist yet) is left unset rather than written
-  as a misleading ₪0.
-- **Optionally, the cumulative meter reading can also be backfilled** —
-  `israel_utility_water_meter_reading_cubic_meters` and
-  `israel_utility_electricity_meter_reading_kwh`. Both walk backward from a
-  known reading, subtracting each day's already-fetched consumption, but
-  how reliable that known reading is differs by service:
-  - **Water** has no historical reading available anywhere in its API, so
-    the anchor is today's *live* reading — a **best-effort estimate**, not
-    a figure the portal ever reported for a past day.
-  - **Electricity** is better than an estimate: IEC's own monthly response
-    carries a genuine, dated reading for the requested month (distinct from
-    the always-"as of now" figure the live gauge uses), so each month
-    reconstructs from its own real historical anchor instead of one guess
-    for the whole range.
+Things to know before running it — see [docs/backfill.md](docs/backfill.md)
+for the full detail:
 
-  Either way, reconstruction stops rather than guessing as soon as it hits
-  a day with no published consumption, or would otherwise go negative, so a
-  real gap in the portal's history simply limits how far back it can go
-  instead of producing wrong values past it. Neither can detect a meter
-  swap, a meter reset, or a house move — any of those silently invalidates
-  every reconstructed reading from before it happened, so skip this if one
-  of those occurred within the range you're backfilling. Because of that,
-  it's opt-in: pass `--estimated-readings`, or answer "y" at the
-  interactive prompt.
-- Monthly consumption is written as a **running month-to-date total, one
-  sample per day** — the same thing the live gauge shows if scraped that
-  day — not a single point on the 1st carrying the whole month's eventual
-  total (which would misrepresent every earlier day, and wouldn't even be
-  visible unless the dashboard's time range happens to reach back to that
-  exact date, since one point every ~30 days is easy to scroll past).
-- The range you can actually backfill is **limited to whatever the underlying
-  portal API itself still retains** — there's no way to go back further than
-  that, regardless of `--days`/`--from`.
+- **Set `REMOTE_WRITE_EXTRA_LABELS` to match your scrape config's
+  `job`/`instance`**, or backfilled data lands as a separate series from
+  live scrapes, splitting the graph in two.
+- Cost/rate metrics are backfilled with **today's tariff config**, not
+  whatever applied historically.
+- Optionally reconstructs the cumulative meter reading too
+  (`--estimated-readings`) — opt-in, since it can't detect a meter
+  swap/reset/house move.
+- Limited to whatever the portal API itself still retains — there's no way
+  to go back further than that.
 - **Your remote_write receiver needs to be configured to accept historical
-  timestamps, or it can silently drop them while still reporting success.**
-  Prometheus's own remote-write receiver rejects out-of-order samples by
-  default (`--storage.tsdb.out-of-order-time-window` defaults to `0`) — set
-  it to cover your backfill range. Other receivers have their own retention/
-  backfill-age limits. If a wide backfill looks incomplete, check the
-  receiver's own logs/config rather than assuming the CLI missed something.
-- Electricity requires a token already saved by `npm run login:electricity` —
-  IEC's OTP login can't be automated here.
-- Samples are timestamped at **local midnight** of the day they cover, the
-  same semantics `*_covers_timestamp_seconds` already uses, so a backfilled
-  point lines up with what a live scrape would have reported that day. Water's
-  weekly total has no live `covers_timestamp` gauge to imitate, so its
-  backfilled sample is timestamped at the **end of that week's bucket**
-  instead; a week whose 7-day window extends past the requested `--to` is
-  skipped rather than backfilled with a partial total that — unlike the live
-  gauge — never gets corrected later.
-- Writing uses the standard Prometheus **remote_write** protocol (protobuf +
-  Snappy) — the same wire format Prometheus itself sends — so
-  `REMOTE_WRITE_URL` can point at any compliant receiver (Prometheus with
-  `--web.enable-remote-write-receiver`, Thanos, Cortex, Mimir, or any other
-  remote_write-compatible TSDB). remote_write is naturally idempotent —
-  writing the same series/timestamp/value again is a safe no-op — so it's
-  safe to re-run the CLI over an overlapping range; a differing value at an
-  already-written timestamp is simply rejected by the receiver.
-- Without `REMOTE_WRITE_URL` set, only `--dry-run` works (it prints what would
-  be sent, without requiring one).
-
-See the [Configuration](#configuration) table for `REMOTE_WRITE_*` variables,
-including TLS options (custom CA, client cert, skip-verify) for a receiver on
-a private or self-signed certificate.
+  timestamps**, or it can silently drop them while still reporting success —
+  e.g. Prometheus's own `--storage.tsdb.out-of-order-time-window` defaults to
+  `0`.
+- Electricity requires a token already saved by `npm run login:electricity`.
+- remote_write is idempotent, so it's safe to re-run over an overlapping
+  range.
 
 ## Development
 

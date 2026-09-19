@@ -33,9 +33,11 @@ const DEFAULT_RETRY_BACKOFF_MS = [1_000, 4_000, 15_000];
 
 /**
  * Snappy-compresses and POSTs a `WriteRequest` to a standard Prometheus
- * remote_write endpoint. Retries 429/5xx a bounded number of times with
- * jittered backoff; any other non-2xx (e.g. 400/401) fails immediately since
- * retrying a malformed request or bad auth won't help.
+ * remote_write endpoint. Retries 429/5xx and network-level failures (a
+ * dropped connection, timeout, or DNS hiccup never even reaches the receiver
+ * to produce a status code) a bounded number of times with jittered backoff;
+ * any other non-2xx (e.g. 400/401) fails immediately since retrying a
+ * malformed request or bad auth won't help.
  */
 export async function remoteWrite(settings: RemoteWriteSettings, series: RwTimeSeries[]): Promise<void> {
   if (series.length === 0) {
@@ -45,7 +47,17 @@ export async function remoteWrite(settings: RemoteWriteSettings, series: RwTimeS
   const backoff = settings.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
 
   for (let attempt = 0; ; attempt += 1) {
-    const response = await post(settings, body);
+    let response: { status: number; body: string };
+    try {
+      response = await post(settings, body);
+    } catch (error) {
+      const nextDelay = backoff[attempt];
+      if (nextDelay === undefined) {
+        throw error instanceof Error ? error : new RemoteWriteError(String(error));
+      }
+      await sleep(nextDelay * (0.75 + Math.random() * 0.5));
+      continue;
+    }
     if (response.status >= 200 && response.status < 300) {
       return;
     }

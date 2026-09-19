@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
 import {
   createServer as createHttpServer,
   type IncomingMessage,
@@ -65,6 +66,12 @@ export function startServer(port: number, log: Logger, webConfig: WebConfig | nu
   return server;
 }
 
+// A bcrypt hash of an unguessable password, compared against when the
+// username isn't found — so a lookup miss costs the same as a wrong password
+// instead of returning early, which would let a timing difference reveal
+// which usernames are configured.
+const DUMMY_HASH = bcrypt.hashSync(randomBytes(32).toString('hex'), 10);
+
 function isAuthorized(header: string | undefined, users: Record<string, string>): boolean {
   if (header?.slice(0, 6).toLowerCase() !== 'basic ') {
     return false;
@@ -77,5 +84,5 @@ function isAuthorized(header: string | undefined, users: Record<string, string>)
   const user = decoded.slice(0, sep);
   const password = decoded.slice(sep + 1);
   const hash = users[user];
-  return hash !== undefined && bcrypt.compareSync(password, hash);
+  return bcrypt.compareSync(password, hash ?? DUMMY_HASH) && hash !== undefined;
 }
