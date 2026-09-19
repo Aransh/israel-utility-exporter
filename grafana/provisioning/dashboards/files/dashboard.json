@@ -32,7 +32,15 @@
       "gridPos": { "x": 0, "y": 1, "w": 18, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_meter_reading_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "m3", "decimals": 3, "custom": { "spanNulls": true } }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m3",
+          "decimals": 3,
+          "custom": { "spanNulls": true },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
@@ -81,7 +89,12 @@
         { "expr": "israel_utility_water_cost_estimate_previous_month_ils", "legendFormat": "Last month (meter {{meter_id}})", "refId": "C" }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" },
+        "defaults": {
+          "unit": "currencyILS",
+          "decimals": 2,
+          "noValue": "not configured",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
         "overrides": [
           {
             "matcher": { "id": "byRegexp", "options": "^Last month" },
@@ -198,7 +211,15 @@
       "gridPos": { "x": 0, "y": 30, "w": 18, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_meter_reading_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "kwatth", "decimals": 1, "custom": { "spanNulls": true } }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "decimals": 1,
+          "custom": { "spanNulls": true },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
@@ -246,7 +267,12 @@
         { "expr": "israel_utility_electricity_cost_estimate_previous_month_ils", "legendFormat": "Last month (contract {{contract_id}})", "refId": "B" }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" },
+        "defaults": {
+          "unit": "currencyILS",
+          "decimals": 2,
+          "noValue": "not configured",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
         "overrides": [
           {
             "matcher": { "id": "byRegexp", "options": "^Last month" },
@@ -274,7 +300,15 @@
       "gridPos": { "x": 12, "y": 36, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_effective_rate_ils_per_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 3, "noValue": "flat mode / not configured" }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyILS",
+          "decimals": 3,
+          "noValue": "flat mode / not configured",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",

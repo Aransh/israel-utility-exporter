@@ -51,6 +51,15 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   connected line/area, because the gap between two real samples is often
   wider than Grafana's default null-gap heuristic tolerates for that field.
   Both now set `spanNulls: true`.
+- The "Water/Electricity Meter Reading", "Water/Electricity Cost", and
+  "Effective Rate" stat panels never set an explicit `thresholds` color, so
+  they silently inherited Grafana's schema default (green below 80, red at
+  or above) — a plain meter reading or cost figure crossing 80 (in whatever
+  unit Prometheus stores it in, e.g. kWh for a MWh-displayed reading) turned
+  it red for no real reason. Confirmed against the actual numbers this
+  exporter produces once seeded with realistic demo data, rather than only
+  the small values that happened to stay under 80 in earlier testing. Fixed
+  by giving each an explicit, always-green threshold.
 
 ## [0.6.0] - 2026-09-19
 
