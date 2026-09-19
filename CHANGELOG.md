@@ -60,6 +60,19 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   exporter produces once seeded with realistic demo data, rather than only
   the small values that happened to stay under 80 in earlier testing. Fixed
   by giving each an explicit, always-green threshold.
+- The "Water/Electricity Meter Reading", "Water/Electricity Cost", "Water
+  Rate vs Normal", and "Effective Rate" stat panels' sparklines (the
+  background trend behind the big number) silently rendered nothing once
+  their query's own time range grew past roughly 2 days — confirmed against
+  Grafana's own official server-side renderer and three different Grafana
+  versions (11.0.0 through 13.2.2), so this is a genuine limitation of
+  Grafana's stat-panel sparkline, not a misconfiguration or a rendering-tool
+  quirk. It's invisible on a freshly-provisioned demo dashboard (whose
+  default range is "Last 30 days") but the same silent cutoff applies to any
+  Prometheus data, real or synthetic. Fixed by pinning each of those panels
+  to `timeFrom: 2d`, independent of whatever range the rest of the dashboard
+  is showing — the same real per-minute Prometheus scrape data that made the
+  sparkline invisible at 30 days renders it fine at 2.
 
 ## [0.6.0] - 2026-09-19
 
