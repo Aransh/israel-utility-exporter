@@ -15,6 +15,13 @@
  * (`*_forecast_liters`/`*_cost_estimate_forecast_ils`) — a forecast is
  * inherently forward-looking — so those are never backfilled.
  *
+ * The meter-reading/cost/rate metrics also feed dashboard sparkline panels
+ * pinned to a short, fixed recent window (`timeFrom: 2d`) regardless of the
+ * dashboard's selected range — see `sparklineTimestamps` for why the last
+ * few days of those specific metrics are written as repeated same-value
+ * samples through the day rather than the single daily point everything
+ * else gets.
+ *
  * Optionally (`--estimated-readings`, or answer "y" at the interactive
  * prompt) also reconstructs each service's *cumulative meter reading*
  * (`israel_utility_water_meter_reading_cubic_meters`,
@@ -172,6 +179,40 @@ export function resolveRange(args: CliArgs): { from: string; to: string } {
   return { from, to };
 }
 
+// The dashboard's meter-reading/cost/rate sparkline panels pin their query to
+// `timeFrom: 2d`, independent of the rest of the dashboard's selected range,
+// so they stay legible regardless of how much history is loaded — but a
+// sparkline needs *samples* within that window, and backfill can otherwise
+// only produce one point per day (the portals' own resolution). One point in
+// a 2-day window looks the same as no data at all. For however much of the
+// requested range falls within the last few days, each day's value is
+// written repeatedly through the day instead of once — the same shape a live
+// scrape record of that day actually has (the gauge sits flat between polls,
+// scraped every `scrape_interval` regardless), not precision the portal
+// never reported.
+const SPARKLINE_TAIL_DAYS = 3;
+const SPARKLINE_STEP_MS = 5 * 60_000;
+
+/**
+ * The timestamp(s) to write a single day's value at: just that day's local
+ * midnight normally, or a dense run of samples every `SPARKLINE_STEP_MS`
+ * from midnight up to "now" (capped at the next midnight) when `day` falls
+ * within `SPARKLINE_TAIL_DAYS` of today, per the rationale above.
+ */
+function sparklineTimestamps(day: string): number[] {
+  const today = isoDate(new Date());
+  const dayStartMs = dateToEpochSeconds(day) * 1000;
+  if (day < shiftDays(today, -(SPARKLINE_TAIL_DAYS - 1)) || day > today) {
+    return [dayStartMs];
+  }
+  const cutoffMs = Math.min(dayStartMs + 86_400_000, Date.now());
+  const timestamps: number[] = [];
+  for (let t = dayStartMs; t <= cutoffMs; t += SPARKLINE_STEP_MS) {
+    timestamps.push(t);
+  }
+  return timestamps;
+}
+
 export interface WaterBackfillOptions {
   /**
    * Also reconstruct `israel_utility_water_meter_reading_cubic_meters` by
@@ -194,6 +235,7 @@ export async function collectWater(
     weeklyWindow: config.weeklyWindow,
     onRetry: (message) => log.debug(`Water backfill: ${message}`),
   });
+  log.info('Water backfill: logging in to the portal...');
   await client.login();
   const meters = await client.listMeters();
 
@@ -212,6 +254,7 @@ export async function collectWater(
   const points: SamplePoint[] = [];
   for (const meter of meters) {
     const labels = { meter_id: String(meter.meterCount), meter_serial: typeof meter.meterId === 'string' ? meter.meterId : '' };
+    log.info(`Water backfill: fetching meter ${meter.meterCount}'s daily consumption (${fetchFrom}..${to})...`);
     const daily = await client.dailyConsumptionRange(meter.meterCount, fetchFrom, to);
 
     for (const day of daily) {
@@ -267,32 +310,33 @@ export async function collectWater(
         if (day.date < from || day.date > to) {
           continue;
         }
-        const timestampMs = dateToEpochSeconds(day.date) * 1000;
-        points.push({ metric: 'israel_utility_water_consumption_monthly_liters', labels, timestampMs, value: cumulative * 1000 });
-
-        if (tariffTiers && tariffThreshold !== null) {
-          points.push({
-            metric: 'israel_utility_water_tariff_threshold_cubic_meters',
-            labels,
-            timestampMs,
-            value: tariffThreshold,
-          });
-          points.push({
-            metric: 'israel_utility_water_effective_rate_ils_per_cubic_meter',
-            labels,
-            timestampMs,
-            value: effectiveWaterRate(tariffTiers, cumulative),
-          });
-          points.push({
-            metric: 'israel_utility_water_tariff_normal_rate_ils_per_cubic_meter',
-            labels,
-            timestampMs,
-            value: tariffTiers.normalRatePerCubicMeter,
-          });
-        }
         const cost = waterCostEstimate(config, cumulative);
-        if (cost !== null) {
-          points.push({ metric: 'israel_utility_water_cost_estimate_ils', labels, timestampMs, value: cost });
+        for (const timestampMs of sparklineTimestamps(day.date)) {
+          points.push({ metric: 'israel_utility_water_consumption_monthly_liters', labels, timestampMs, value: cumulative * 1000 });
+
+          if (tariffTiers && tariffThreshold !== null) {
+            points.push({
+              metric: 'israel_utility_water_tariff_threshold_cubic_meters',
+              labels,
+              timestampMs,
+              value: tariffThreshold,
+            });
+            points.push({
+              metric: 'israel_utility_water_effective_rate_ils_per_cubic_meter',
+              labels,
+              timestampMs,
+              value: effectiveWaterRate(tariffTiers, cumulative),
+            });
+            points.push({
+              metric: 'israel_utility_water_tariff_normal_rate_ils_per_cubic_meter',
+              labels,
+              timestampMs,
+              value: tariffTiers.normalRatePerCubicMeter,
+            });
+          }
+          if (cost !== null) {
+            points.push({ metric: 'israel_utility_water_cost_estimate_ils', labels, timestampMs, value: cost });
+          }
         }
       }
     }
@@ -316,12 +360,9 @@ export async function collectWater(
       const currentTotal = typeof meter.read === 'number' && Number.isFinite(meter.read) ? meter.read : null;
       const readings = reconstructMeterReadings(currentTotal, dailyConsumption, from, to, today, log, String(meter.meterCount));
       for (const reading of readings) {
-        points.push({
-          metric: 'israel_utility_water_meter_reading_cubic_meters',
-          labels,
-          timestampMs: dateToEpochSeconds(reading.date) * 1000,
-          value: reading.value,
-        });
+        for (const timestampMs of sparklineTimestamps(reading.date)) {
+          points.push({ metric: 'israel_utility_water_meter_reading_cubic_meters', labels, timestampMs, value: reading.value });
+        }
       }
     }
   }
@@ -515,6 +556,7 @@ export async function collectElectricity(
     );
   }
 
+  log.info('Electricity backfill: fetching account details...');
   const customer = await client.getCustomer();
   const contracts = await client.getContracts(customer.bpNumber);
   const contract = contracts[0];
@@ -535,6 +577,7 @@ export async function collectElectricity(
   const dailyByDate = new Map<string, number>();
   const points: SamplePoint[] = [];
   for (const monthStart of enumerateMonthStarts(from, to)) {
+    log.info(`Electricity backfill: fetching ${monthStart.slice(0, 7)}...`);
     const monthly = await client.getConsumption(contract.contractId, ReadingResolution.MONTHLY, monthStart);
     const monthKey = monthStart.slice(0, 7);
     const monthDays: Array<{ date: string; consumption: number }> = [];
@@ -585,10 +628,11 @@ export async function collectElectricity(
       if (date < from || date > to) {
         continue;
       }
-      const timestampMs = dateToEpochSeconds(date) * 1000;
-      points.push({ metric: 'israel_utility_electricity_consumption_monthly_kwh', labels, timestampMs, value: cumulative });
-      if (rate !== null) {
-        points.push({ metric: 'israel_utility_electricity_cost_estimate_monthly_ils', labels, timestampMs, value: cumulativeCost });
+      for (const timestampMs of sparklineTimestamps(date)) {
+        points.push({ metric: 'israel_utility_electricity_consumption_monthly_kwh', labels, timestampMs, value: cumulative });
+        if (rate !== null) {
+          points.push({ metric: 'israel_utility_electricity_cost_estimate_monthly_ils', labels, timestampMs, value: cumulativeCost });
+        }
       }
     }
 
@@ -604,12 +648,9 @@ export async function collectElectricity(
         contract.contractId,
       );
       for (const reading of readings) {
-        points.push({
-          metric: 'israel_utility_electricity_meter_reading_kwh',
-          labels,
-          timestampMs: dateToEpochSeconds(reading.date) * 1000,
-          value: reading.value,
-        });
+        for (const timestampMs of sparklineTimestamps(reading.date)) {
+          points.push({ metric: 'israel_utility_electricity_meter_reading_kwh', labels, timestampMs, value: reading.value });
+        }
       }
     }
   }
@@ -629,7 +670,9 @@ export async function collectElectricity(
       continue;
     }
     if (tariffSchedule) {
-      points.push({ metric: 'israel_utility_electricity_effective_rate_ils_per_kwh', labels, timestampMs, value: rate });
+      for (const rateTimestampMs of sparklineTimestamps(date)) {
+        points.push({ metric: 'israel_utility_electricity_effective_rate_ils_per_kwh', labels, timestampMs: rateTimestampMs, value: rate });
+      }
     }
     points.push({ metric: 'israel_utility_electricity_cost_estimate_ils', labels, timestampMs, value: consumption * rate });
   }

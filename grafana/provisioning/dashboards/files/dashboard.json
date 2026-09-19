@@ -58,6 +58,7 @@
       "description": "Whether the last poll of the water portal succeeded.",
       "gridPos": { "x": 18, "y": 1, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "timeFrom": "10m",
       "targets": [{ "expr": "israel_utility_water_scrape_success", "refId": "A" }],
       "fieldConfig": {
         "defaults": {
@@ -80,8 +81,8 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Water Cost",
-      "description": "Estimated cost so far this month, the portal's forecast for month-end, and last month's final cost.",
+      "title": "Water Cost Estimate",
+      "description": "Estimated cost so far this month, the portal's forecast for month-end, and last month's estimated final cost.",
       "gridPos": { "x": 0, "y": 7, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",
@@ -117,8 +118,8 @@
     {
       "id": 8,
       "type": "stat",
-      "title": "Water Rate vs Normal (Tiered Mode)",
-      "description": "This month's blended water rate as a percentage of the normal rate. Above 100% means usage has spilled into the pricier tier.",
+      "title": "Estimated Water Rate vs Normal (Tiered Mode)",
+      "description": "This month's estimated blended water rate as a percentage of the normal rate. Above 100% means usage has spilled into the pricier tier.",
       "gridPos": { "x": 12, "y": 7, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",
@@ -238,6 +239,7 @@
       "description": "Whether the last poll of the IEC API succeeded.",
       "gridPos": { "x": 18, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "timeFrom": "10m",
       "targets": [{ "expr": "israel_utility_electricity_scrape_success", "refId": "A" }],
       "fieldConfig": {
         "defaults": {
@@ -260,8 +262,8 @@
     {
       "id": 23,
       "type": "stat",
-      "title": "Electricity Cost (Month to Date)",
-      "description": "Estimated cost so far this month, and last month's final cost.",
+      "title": "Electricity Cost Estimate (Month to Date)",
+      "description": "Estimated cost so far this month, and last month's estimated final cost.",
       "gridPos": { "x": 0, "y": 36, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",
@@ -296,8 +298,8 @@
     {
       "id": 24,
       "type": "stat",
-      "title": "Effective Rate (Today, Schedule Mode)",
-      "description": "Today's blended electricity rate.",
+      "title": "Estimated Effective Rate (Today, Schedule Mode)",
+      "description": "Today's estimated blended electricity rate.",
       "gridPos": { "x": 12, "y": 36, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",

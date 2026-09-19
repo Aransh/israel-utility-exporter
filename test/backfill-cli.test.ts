@@ -253,14 +253,30 @@ test('collectWater reconstructs the meter reading by walking backward from today
 
   const readingPoints = points.filter((p) => p.metric === 'israel_utility_water_meter_reading_cubic_meters');
   // fakeWaterPortal reports the current reading as 100 and 1 m3/day consumption, so walking
-  // backward from today: today=100, yesterday=99, the day before=98.
-  assert.deepEqual(
-    new Map(readingPoints.map((p) => [p.timestampMs, p.value])),
-    new Map([
-      [dateToEpochSeconds(to) * 1000, 100],
-      [dateToEpochSeconds(shiftDays(to, -1)) * 1000, 99],
-      [dateToEpochSeconds(from) * 1000, 98],
-    ]),
+  // backward from today: today=100, yesterday=99, the day before=98. Every day here falls
+  // within `SPARKLINE_TAIL_DAYS` of today, so each value is written repeatedly through its day
+  // rather than as a single point — assert only the value each day's midnight-aligned sample
+  // carries, not the exact point count (see the dedicated densification test below for that).
+  const valueAtMidnight = (day: string) => readingPoints.find((p) => p.timestampMs === dateToEpochSeconds(day) * 1000)?.value;
+  assert.equal(valueAtMidnight(to), 100);
+  assert.equal(valueAtMidnight(shiftDays(to, -1)), 99);
+  assert.equal(valueAtMidnight(from), 98);
+});
+
+test('collectWater writes the meter reading repeatedly through recent days, not just once, so a range-pinned sparkline has samples', async () => {
+  globalThis.fetch = fakeWaterPortal() as typeof fetch;
+  const config: WaterConfig = { email: 'a@example.com', password: 'x', pollIntervalMs: 60_000, weeklyWindow: 'sunday', pricePerCubicMeter: null };
+  const to = isoDate(new Date());
+  const from = shiftDays(to, -1);
+
+  const points = await collectWater(config, from, to, SILENT_LOG, { includeMeterReading: true });
+
+  const readingPoints = points.filter((p) => p.metric === 'israel_utility_water_meter_reading_cubic_meters');
+  const yesterdayPoints = readingPoints.filter((p) => p.timestampMs >= dateToEpochSeconds(from) * 1000 && p.timestampMs < dateToEpochSeconds(to) * 1000);
+  assert.ok(yesterdayPoints.length > 1, 'yesterday is within the densified tail window, so it should carry more than one sample');
+  assert.ok(
+    yesterdayPoints.every((p) => p.value === 99),
+    'every densified sample for the same day repeats that day\'s single known value',
   );
 });
 

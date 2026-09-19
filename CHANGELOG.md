@@ -83,6 +83,51 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   field's sparkline scales to its own range instead of sharing one across
   the whole panel.
 
+## [0.6.2] - 2026-09-19
+
+### Changed
+
+- `backfill-cli.js` now logs an info-level line before each meter's daily
+  fetch (water) and each month's fetch (electricity), plus one for
+  login/account-details — a multi-month backfill makes several sequential
+  portal/IEC API calls that can each take a couple of seconds, but at the
+  default `LOG_LEVEL=info` a slow-but-working run and a genuinely hung one
+  previously looked identical from the terminal.
+- Every dashboard panel showing a cost or rate figure now says so in its
+  title, not just its description: "Water Cost" → "Water Cost Estimate",
+  "Water Rate vs Normal (Tiered Mode)" → "Estimated Water Rate vs Normal
+  (Tiered Mode)", "Electricity Cost (Month to Date)" → "Electricity Cost
+  Estimate (Month to Date)", "Effective Rate (Today, Schedule Mode)" →
+  "Estimated Effective Rate (Today, Schedule Mode)". These are all priced
+  with today's tariff config against Prometheus-reported consumption, not a
+  figure the utility itself has billed — that caveat shouldn't require
+  opening the panel's description to see.
+
+### Fixed
+
+- The "Water/Electricity Collector Health" panels could read "No data" at
+  the dashboard's default 30-day range immediately after a fresh start (e.g.
+  right after clearing and backfilling the datastore), even though the
+  exporter's most recent scrape was healthy — a wide range query coarsens
+  its evaluation grid, and a single very recent sample can fall in the gap.
+  Narrowing the dashboard to a short range (e.g. 1 day) always showed the
+  correct status, confirming the data was fine and it was purely a query
+  artifact. Since this panel is a "is it up right now" indicator, it doesn't
+  make sense for it to depend on the dashboard's selected range at all —
+  fixed by pinning it to `timeFrom: 10m`, independent of the rest of the
+  dashboard, so it always evaluates against a fine-grained recent window.
+- A fresh `backfill-cli.js` run left the meter-reading/cost/rate sparkline
+  panels above just as empty as a brand new install, since backfill only
+  ever wrote one point per day (the portals' own resolution) and those
+  panels are pinned to a 2-day window — one point in 2 days looks like no
+  data. Backfill is meant to make a freshly reset instance immediately
+  usable, not something that quietly needs a day or two of live scraping
+  first. For however much of the requested range falls within the last few
+  days, `backfill-cli.js` now writes each of those metrics' value
+  repeatedly through the day (every 5 minutes) instead of once — the same
+  shape a live scrape record of that day actually has, since the gauge sits
+  flat between polls and gets sampled every `scrape_interval` regardless.
+
 ## [0.6.0] - 2026-09-19
 
 ### Added
