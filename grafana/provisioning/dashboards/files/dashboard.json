@@ -116,7 +116,7 @@
       "id": 4,
       "type": "stat",
       "title": "Water Cost Estimate",
-      "description": "Estimated cost so far this month, the portal's forecast for month-end, and last month's estimated final cost.",
+      "description": "Estimated cost so far this month, the portal's forecast for month-end, and last month's estimated final cost. Includes VAT.",
       "gridPos": { "x": 0, "y": 7, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
@@ -151,7 +151,7 @@
       "id": 28,
       "type": "timeseries",
       "title": "Water Cost Trend (Month to Date)",
-      "description": "How this month's estimated cost has accumulated so far, against the portal's forecast and last month's final cost.",
+      "description": "How this month's estimated cost has accumulated so far, against the portal's forecast and last month's final cost. Includes VAT.",
       "gridPos": { "x": 10, "y": 7, "w": 14, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
@@ -293,7 +293,7 @@
       "id": 24,
       "type": "stat",
       "title": "Effective Rate (Today)",
-      "description": "Today's estimated blended electricity rate.",
+      "description": "Today's estimated blended electricity rate. Includes VAT.",
       "gridPos": { "x": 12, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
@@ -321,7 +321,7 @@
       "id": 23,
       "type": "stat",
       "title": "Electricity Cost Estimate (Month to Date)",
-      "description": "Estimated cost so far this month, and last month's estimated final cost.",
+      "description": "Estimated cost so far this month, and last month's estimated final cost. Includes VAT.",
       "gridPos": { "x": 0, "y": 36, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
@@ -355,7 +355,7 @@
       "id": 29,
       "type": "timeseries",
       "title": "Electricity Cost Trend (Month to Date)",
-      "description": "How this month's estimated cost has accumulated so far, against last month's final cost.",
+      "description": "How this month's estimated cost has accumulated so far, against last month's final cost. Includes VAT.",
       "gridPos": { "x": 10, "y": 36, "w": 14, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
