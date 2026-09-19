@@ -23,14 +23,15 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   bought legibility at the cost of usefulness. The actual trend already
   lives in the "Cumulative Meter Reading" panels below, which use a
   normal Timeseries visualization built for that job.
-- Redesigned the "Water Cost"/"Water Rate vs Normal" and "Electricity
-  Cost"/"Effective Rate" rows: the rate stat panels were disproportionate
-  — half the row's width for a single percentage — so they're now
-  narrower, and a new "Water/Electricity Cost Trend (Month to Date)"
-  timeseries panel fills the freed space, plotting the month-to-date cost
-  against last month's final cost (and, for water, the portal's own
-  forecast) as an actual line graph across the dashboard's full selected
-  range.
+- Redesigned the top two rows of each service: the rate panels ("Water
+  Rate vs Normal", "Effective Rate") were disproportionately large for a
+  single percentage, taking half a row's width. Moved them up alongside
+  the (also oversized) "Meter Reading" panel instead, and used the space
+  freed in the row below for a new "Water/Electricity Cost Trend (Month
+  to Date)" timeseries panel, plotting the month-to-date cost against
+  last month's final cost (and, for water, the portal's own forecast) as
+  an actual line graph across the dashboard's full selected range — the
+  cost panels now also get noticeably more room than before.
 
 ## [0.6.3] - 2026-09-19
 

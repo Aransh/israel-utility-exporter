@@ -29,7 +29,7 @@
       "type": "stat",
       "title": "Water Meter Reading",
       "description": "Cumulative water meter reading.",
-      "gridPos": { "x": 0, "y": 1, "w": 18, "h": 6 },
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_meter_reading_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
       "fieldConfig": {
@@ -77,11 +77,43 @@
       }
     },
     {
+      "id": 8,
+      "type": "stat",
+      "title": "Water Rate vs Normal",
+      "description": "This month's estimated blended water rate as a percentage of the normal rate. Above 100% means usage has spilled into the pricier tier.",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "100 * israel_utility_water_effective_rate_ils_per_cubic_meter / israel_utility_water_tariff_normal_rate_ils_per_cubic_meter",
+          "legendFormat": "Meter {{meter_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "noValue": "flat mode / not configured",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 100 }] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
       "id": 4,
       "type": "stat",
       "title": "Water Cost Estimate",
       "description": "Estimated cost so far this month, the portal's forecast for month-end, and last month's estimated final cost.",
-      "gridPos": { "x": 0, "y": 7, "w": 8, "h": 6 },
+      "gridPos": { "x": 0, "y": 7, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         { "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Month to date (meter {{meter_id}})", "refId": "A" },
@@ -112,43 +144,11 @@
       }
     },
     {
-      "id": 8,
-      "type": "stat",
-      "title": "Water Rate vs Normal",
-      "description": "This month's estimated blended water rate as a percentage of the normal rate. Above 100% means usage has spilled into the pricier tier.",
-      "gridPos": { "x": 8, "y": 7, "w": 4, "h": 6 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [
-        {
-          "expr": "100 * israel_utility_water_effective_rate_ils_per_cubic_meter / israel_utility_water_tariff_normal_rate_ils_per_cubic_meter",
-          "legendFormat": "Meter {{meter_id}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "decimals": 1,
-          "noValue": "flat mode / not configured",
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 100 }] }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center"
-      }
-    },
-    {
       "id": 28,
       "type": "timeseries",
       "title": "Water Cost Trend (Month to Date)",
       "description": "How this month's estimated cost has accumulated so far, against the portal's forecast and last month's final cost.",
-      "gridPos": { "x": 12, "y": 7, "w": 12, "h": 6 },
+      "gridPos": { "x": 10, "y": 7, "w": 14, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         { "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Month to date (meter {{meter_id}})", "refId": "A" },
@@ -236,7 +236,7 @@
       "type": "stat",
       "title": "Electricity Meter Reading",
       "description": "Cumulative electricity meter reading.",
-      "gridPos": { "x": 0, "y": 30, "w": 18, "h": 6 },
+      "gridPos": { "x": 0, "y": 30, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_meter_reading_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
       "fieldConfig": {
@@ -284,11 +284,37 @@
       }
     },
     {
+      "id": 24,
+      "type": "stat",
+      "title": "Effective Rate (Today)",
+      "description": "Today's estimated blended electricity rate.",
+      "gridPos": { "x": 12, "y": 30, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "israel_utility_electricity_effective_rate_ils_per_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyILS",
+          "decimals": 3,
+          "noValue": "flat mode / not configured",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
       "id": 23,
       "type": "stat",
       "title": "Electricity Cost Estimate (Month to Date)",
       "description": "Estimated cost so far this month, and last month's estimated final cost.",
-      "gridPos": { "x": 0, "y": 36, "w": 8, "h": 6 },
+      "gridPos": { "x": 0, "y": 36, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         { "expr": "israel_utility_electricity_cost_estimate_monthly_ils", "legendFormat": "Month to date (contract {{contract_id}})", "refId": "A" },
@@ -318,37 +344,11 @@
       }
     },
     {
-      "id": 24,
-      "type": "stat",
-      "title": "Effective Rate (Today)",
-      "description": "Today's estimated blended electricity rate.",
-      "gridPos": { "x": 8, "y": 36, "w": 4, "h": 6 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_electricity_effective_rate_ils_per_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyILS",
-          "decimals": 3,
-          "noValue": "flat mode / not configured",
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center"
-      }
-    },
-    {
       "id": 29,
       "type": "timeseries",
       "title": "Electricity Cost Trend (Month to Date)",
       "description": "How this month's estimated cost has accumulated so far, against last month's final cost.",
-      "gridPos": { "x": 12, "y": 36, "w": 12, "h": 6 },
+      "gridPos": { "x": 10, "y": 36, "w": 14, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         { "expr": "israel_utility_electricity_cost_estimate_monthly_ils", "legendFormat": "Month to date (contract {{contract_id}})", "refId": "A" },
