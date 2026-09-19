@@ -280,6 +280,37 @@ test('collectWater writes the meter reading repeatedly through recent days, not 
   );
 });
 
+test('collectWater writes a same-day point from the live reading even when the portal\'s daily consumption lags several days behind', async () => {
+  const to = isoDate(new Date());
+  const from = shiftDays(to, -5);
+  const publishedThrough = shiftDays(to, -3); // the portal hasn't published the last 3 days yet
+  globalThis.fetch = (async (url: string) => {
+    const path = new URL(url).pathname;
+    if (path === '/consumer/login') return json({ token: 'tok' });
+    if (path === '/consumption/last-read') return json([{ meterCount: METER_COUNT, meterId: 'SER1', read: 100 }]);
+    if (path.startsWith(`/consumption/daily/${METER_COUNT}/`)) {
+      const [rangeFrom, rangeTo] = path.split('/').slice(-2) as [string, string];
+      const rows: unknown[] = [];
+      for (let date = rangeFrom; date <= rangeTo && date <= publishedThrough; date = shiftDays(date, 1)) {
+        rows.push({ meterCount: METER_COUNT, consDate: `${date}T00:00:00`, cons: 1 });
+      }
+      return json(rows);
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+  const config: WaterConfig = { email: 'a@example.com', password: 'x', pollIntervalMs: 60_000, weeklyWindow: 'sunday', pricePerCubicMeter: null };
+
+  const points = await collectWater(config, from, to, SILENT_LOG, { includeMeterReading: true });
+
+  const readingPoints = points.filter((p) => p.metric === 'israel_utility_water_meter_reading_cubic_meters');
+  const todayPoints = readingPoints.filter((p) => p.timestampMs >= dateToEpochSeconds(to) * 1000);
+  assert.ok(todayPoints.length > 1, 'today should get the live reading, densified — not skipped just because the portal lags');
+  assert.ok(
+    todayPoints.every((p) => p.value === 100),
+    'today\'s samples should carry the live reading, not a value reconstructed from lagged daily consumption',
+  );
+});
+
 test('reconstructMeterReadings walks backward from the newest known day, subtracting each day\'s consumption', () => {
   const dailyConsumption = new Map([
     ['2026-01-01', 1],
@@ -626,6 +657,67 @@ test('collectElectricity reconstructs the meter reading from IEC\'s own dated re
       [dateToEpochSeconds('2026-01-02') * 1000, 97],
       [dateToEpochSeconds('2026-01-01') * 1000, 95],
     ]),
+  );
+});
+
+test('collectElectricity writes a same-day point from the live reading even when periodEndReading lags several days behind', async () => {
+  const to = isoDate(new Date());
+  const from = shiftDays(to, -5);
+  const anchorDate = shiftDays(to, -3); // IEC's own dated reading lags a few days behind "today"
+  const LIVE_TOTAL_IMPORT = 500;
+
+  globalThis.fetch = (async (url: string, init: RequestInit = {}) => {
+    const u = new URL(url);
+    if (u.hostname !== 'iecapi.iec.co.il') return new Response('', { status: 404 });
+    if (u.pathname === '/api/customer') return json({ bpNumber: 'BP1' });
+    if (u.pathname === '/api/customer/contract/BP1') return json({ contracts: [{ contractId: CONTRACT_ID }] });
+    if (u.pathname === `/api/Device/${CONTRACT_ID}`) return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
+    if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
+      const body = JSON.parse(init.body as string) as { resolution: number; fromDate: string };
+      if (body.resolution !== ReadingResolution.MONTHLY) {
+        return json({ meterList: [{ totalConsumptionForPeriod: 0 }] });
+      }
+      const monthKey = body.fromDate.slice(0, 7);
+      const monthStart = `${monthKey}-01`;
+      const [y, m] = monthStart.split('-').map(Number) as [number, number];
+      const monthEnd = isoDate(new Date(y, m, 0));
+      // Only publish daily data up through anchorDate — simulating IEC's real-world lag —
+      // and only for whichever month is actually anchored (the current one).
+      const isAnchorMonth = monthKey === anchorDate.slice(0, 7);
+      const periodConsumptions: Array<{ interval: string; consumption: number }> = [];
+      for (let d = monthStart; d <= monthEnd && (!isAnchorMonth || d <= anchorDate); d = shiftDays(d, 1)) {
+        periodConsumptions.push({ interval: new Date(dateToEpochSeconds(d) * 1000).toISOString(), consumption: 1 });
+      }
+      return json({
+        meterList: [
+          {
+            totalConsumptionForPeriod: periodConsumptions.length,
+            totalImport: isAnchorMonth ? LIVE_TOTAL_IMPORT : undefined,
+            totalImportDateForPeriod: isAnchorMonth ? anchorDate : undefined,
+            periodConsumptions,
+          },
+        ],
+      });
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+
+  const points = await collectElectricity(config, from, to, SILENT_LOG, { includeMeterReading: true });
+
+  const readingPoints = points.filter((p) => p.metric === 'israel_utility_electricity_meter_reading_kwh');
+  const todayPoints = readingPoints.filter((p) => p.timestampMs >= dateToEpochSeconds(to) * 1000);
+  assert.ok(todayPoints.length > 1, 'today should get the live reading, densified — not skipped just because periodEndReading lags');
+  assert.ok(
+    todayPoints.every((p) => p.value === LIVE_TOTAL_IMPORT),
+    'today\'s samples should carry the live totalImport, not a value reconstructed from the lagged anchor',
   );
 });
 
