@@ -28,7 +28,7 @@
       "id": 2,
       "type": "stat",
       "title": "Water Meter Reading",
-      "description": "Cumulative meter reading. If this stops moving entirely, check WaterScrapeStale in Alerting. The sparkline is pinned to the last 2 days regardless of the dashboard's own time range — Grafana's stat-panel sparkline silently renders nothing past roughly that span, no matter how much data is behind it.",
+      "description": "Cumulative water meter reading.",
       "gridPos": { "x": 0, "y": 1, "w": 18, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",
@@ -48,14 +48,14 @@
         "textMode": "auto",
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "center"
       }
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Water Collector Health",
-      "description": "1 = last poll of the Read Your Meter Pro portal succeeded.",
+      "description": "Whether the last poll of the water portal succeeded.",
       "gridPos": { "x": 18, "y": 1, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_scrape_success", "refId": "A" }],
@@ -74,14 +74,14 @@
         "textMode": "auto",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "auto"
+        "justifyMode": "center"
       }
     },
     {
       "id": 4,
       "type": "stat",
       "title": "Water Cost",
-      "description": "Month-to-date estimate, the portal's own month-end forecast, and last calendar month's final cost for comparison — all priced the same way (flat, or tiered if WATER_TARIFF_MODE=tiered; last month is priced with today's tariff, not necessarily the one that applied then). The background trend is the month-to-date figure over just the last 2 days (see the Water Meter Reading panel for why) — expect a rise, not the whole month's sawtooth. Only populated when WATER_PRICE_PER_CUBIC_METER is set (flat mode) or tiered mode is fully configured.",
+      "description": "Estimated cost so far this month, the portal's forecast for month-end, and last month's final cost.",
       "gridPos": { "x": 0, "y": 7, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",
@@ -101,10 +101,7 @@
         "overrides": [
           {
             "matcher": { "id": "byRegexp", "options": "^Last month" },
-            "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-gray" } },
-              { "id": "custom.graphMode", "value": "none" }
-            ]
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-gray" } }]
           }
         ]
       },
@@ -114,14 +111,14 @@
         "textMode": "auto",
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "center"
       }
     },
     {
       "id": 8,
       "type": "stat",
       "title": "Water Rate vs Normal (Tiered Mode)",
-      "description": "This month-to-date consumption's blended ILS/m3 rate (israel_utility_water_effective_rate_ils_per_cubic_meter), as a percentage of the below-allowance rate (israel_utility_water_tariff_normal_rate_ils_per_cubic_meter). 100% means every m3 so far has been priced at the normal rate; above 100% means this month has spilled into the pricier excess tier — only the excess m3 are actually charged the higher rate, not the whole month (see the README). Only populated in WATER_TARIFF_MODE=tiered. The sparkline covers just the last 2 days (see the Water Meter Reading panel for why).",
+      "description": "This month's blended water rate as a percentage of the normal rate. Above 100% means usage has spilled into the pricier tier.",
       "gridPos": { "x": 12, "y": 7, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",
@@ -147,14 +144,14 @@
         "textMode": "auto",
         "colorMode": "background",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "center"
       }
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "Daily Water Consumption",
-      "description": "Not always today's figure — the portal publishes a day's reading with a lag; check *_covers_timestamp_seconds if a value looks stale.",
+      "description": "Water used on the most recently published day.",
       "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_consumption_daily_liters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
@@ -165,7 +162,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Weekly / Monthly Water Consumption vs Forecast",
-      "description": "The dashed red line is this month's subsidized-rate threshold — only present in WATER_TARIFF_MODE=tiered, and reflects whatever household size/allowance is currently configured (not a fixed number baked into the dashboard).",
+      "description": "Water used this week and this month so far, against the portal's forecast and the monthly allowance.",
       "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
@@ -197,7 +194,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "Cumulative Water Meter Reading",
-      "description": "The long-term trend the Home app can't show you. A flattening slope is lower usage; a step change worth investigating is usually a leak.",
+      "description": "The meter reading over time.",
       "gridPos": { "x": 0, "y": 21, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_meter_reading_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
@@ -211,7 +208,7 @@
       "id": 21,
       "type": "stat",
       "title": "Electricity Meter Reading",
-      "description": "Cumulative meter reading. IEC only updates this every 1-2 days regardless of poll frequency. The sparkline is pinned to the last 2 days regardless of the dashboard's own time range — Grafana's stat-panel sparkline silently renders nothing past roughly that span, no matter how much data is behind it.",
+      "description": "Cumulative electricity meter reading.",
       "gridPos": { "x": 0, "y": 30, "w": 18, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",
@@ -231,14 +228,14 @@
         "textMode": "auto",
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "center"
       }
     },
     {
       "id": 22,
       "type": "stat",
       "title": "Electricity Collector Health",
-      "description": "1 = last poll of the IEC API succeeded. If this is stuck at 0, check the exporter logs — likely the token needs a fresh login.",
+      "description": "Whether the last poll of the IEC API succeeded.",
       "gridPos": { "x": 18, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_scrape_success", "refId": "A" }],
@@ -257,14 +254,14 @@
         "textMode": "auto",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "auto"
+        "justifyMode": "center"
       }
     },
     {
       "id": 23,
       "type": "stat",
       "title": "Electricity Cost (Month to Date)",
-      "description": "Each published day priced at its own rate and summed — this month to date, and last calendar month's final total for comparison (priced with today's tariff, not necessarily the one that applied then). Only populated when ELECTRICITY_PRICE_PER_KWH or a tariff schedule is configured. In schedule mode this is a duration-weighted estimate, not a bill reconstruction — see README. The background trend is the month-to-date figure over just the last 2 days (see the Electricity Meter Reading panel for why) — expect a rise, not the whole month's sawtooth.",
+      "description": "Estimated cost so far this month, and last month's final cost.",
       "gridPos": { "x": 0, "y": 36, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",
@@ -283,10 +280,7 @@
         "overrides": [
           {
             "matcher": { "id": "byRegexp", "options": "^Last month" },
-            "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-gray" } },
-              { "id": "custom.graphMode", "value": "none" }
-            ]
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-gray" } }]
           }
         ]
       },
@@ -296,14 +290,14 @@
         "textMode": "auto",
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "center"
       }
     },
     {
       "id": 24,
       "type": "stat",
       "title": "Effective Rate (Today, Schedule Mode)",
-      "description": "Only populated in ELECTRICITY_TARIFF_MODE=schedule. The duration-weighted blended ILS/kWh rate for today, given the configured time-of-use windows. The background trend shows how this varies day to day (e.g. weekday vs. weekend time-of-use windows), over the last 2 days (see the Electricity Meter Reading panel for why it's pinned rather than following the dashboard's own time range).",
+      "description": "Today's blended electricity rate.",
       "gridPos": { "x": 12, "y": 36, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "timeFrom": "2d",
@@ -323,14 +317,14 @@
         "textMode": "auto",
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "center"
       }
     },
     {
       "id": 25,
       "type": "timeseries",
       "title": "Daily Electricity Consumption",
-      "description": "One point roughly every 1-2 days, matching IEC's own publication cadence.",
+      "description": "Electricity used on the most recently published day.",
       "gridPos": { "x": 0, "y": 42, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_consumption_daily_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
@@ -341,6 +335,7 @@
       "id": 26,
       "type": "timeseries",
       "title": "Monthly Electricity Consumption",
+      "description": "Electricity used this calendar month so far.",
       "gridPos": { "x": 12, "y": 42, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_consumption_monthly_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
@@ -351,7 +346,7 @@
       "id": 27,
       "type": "timeseries",
       "title": "Cumulative Electricity Meter Reading",
-      "description": "The long-term trend the Home app can't show you.",
+      "description": "The meter reading over time.",
       "gridPos": { "x": 0, "y": 50, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_meter_reading_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
