@@ -76,6 +76,8 @@ test('WATER_TARIFF_MODE defaults to flat, with tariffTiers null', () => {
 });
 
 test('WATER_TARIFF_MODE=tiered parses a full set of tiers', () => {
+  // VAT_PERCENT explicitly zeroed so this test is about tier parsing, not
+  // the VAT gross-up covered separately below.
   const config = loadConfig(
     baseEnv({
       WATER_TARIFF_MODE: 'tiered',
@@ -83,6 +85,7 @@ test('WATER_TARIFF_MODE=tiered parses a full set of tiers', () => {
       WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER: '20',
       WATER_TARIFF_HOUSEHOLD_SIZE: '4',
       WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS: '3.5',
+      VAT_PERCENT: '0',
     }),
   );
   assert.deepEqual(config.water?.tariffTiers, {
@@ -152,6 +155,55 @@ test('WATER_TARIFF_MODE=tiered without WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_M
       ),
     ConfigError,
   );
+});
+
+test('VAT_PERCENT defaults to 18% and grosses up WATER_PRICE_PER_CUBIC_METER', () => {
+  const config = loadConfig(baseEnv({ WATER_PRICE_PER_CUBIC_METER: '10' }));
+  assert.ok(Math.abs(config.water!.pricePerCubicMeter! - 11.8) < 1e-9);
+});
+
+test('VAT_PERCENT defaults to 18% and grosses up ELECTRICITY_PRICE_PER_KWH', () => {
+  const config = loadConfig(baseEnv({ ELECTRICITY_ENABLED: 'true', ELECTRICITY_ID: '123456789', ELECTRICITY_PRICE_PER_KWH: '0.5383' }));
+  assert.ok(Math.abs(config.electricity!.pricePerKwh! - 0.635194) < 1e-9);
+  assert.equal(config.electricity!.vatPercent, 18);
+});
+
+test('VAT_PERCENT grosses up both the tiered water rates, from the same pre-VAT input', () => {
+  const config = loadConfig(
+    baseEnv({
+      WATER_TARIFF_MODE: 'tiered',
+      WATER_PRICE_PER_CUBIC_METER: '10',
+      WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER: '20',
+      WATER_TARIFF_HOUSEHOLD_SIZE: '4',
+      WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS: '3.5',
+      VAT_PERCENT: '18',
+    }),
+  );
+  assert.ok(Math.abs(config.water!.tariffTiers!.normalRatePerCubicMeter - 11.8) < 1e-9);
+  assert.ok(Math.abs(config.water!.tariffTiers!.excessRatePerCubicMeter - 23.6) < 1e-9);
+});
+
+test('VAT_PERCENT can be overridden to a custom rate', () => {
+  const config = loadConfig(baseEnv({ WATER_PRICE_PER_CUBIC_METER: '10', VAT_PERCENT: '17' }));
+  assert.ok(Math.abs(config.water!.pricePerCubicMeter! - 11.7) < 1e-9);
+});
+
+test('VAT_PERCENT=0 disables the gross-up entirely', () => {
+  const config = loadConfig(baseEnv({ WATER_PRICE_PER_CUBIC_METER: '10', VAT_PERCENT: '0' }));
+  assert.equal(config.water?.pricePerCubicMeter, 10);
+});
+
+test('VAT_PERCENT does not gross up an unset (null) price', () => {
+  const config = loadConfig(baseEnv());
+  assert.equal(config.water?.pricePerCubicMeter, null);
+});
+
+test('VAT_PERCENT rejects a negative value', () => {
+  assert.throws(() => loadConfig(baseEnv({ VAT_PERCENT: '-5' })), ConfigError);
+});
+
+test('VAT_PERCENT rejects a non-numeric value', () => {
+  assert.throws(() => loadConfig(baseEnv({ VAT_PERCENT: 'eighteen' })), ConfigError);
 });
 
 test('REMOTE_WRITE_BEARER_TOKEN is mutually exclusive with basic auth', () => {

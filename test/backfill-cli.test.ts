@@ -501,7 +501,15 @@ test('collectElectricity gets real daily data from the MONTHLY call, not a separ
     tokenFile,
     JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
   );
-  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'flat',
+    pricePerKwh: null,
+    tariffScheduleFile: null,
+    vatPercent: 0,
+  };
 
   const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG);
 
@@ -546,7 +554,15 @@ test('collectElectricity computes the monthly running total from the whole month
     tokenFile,
     JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
   );
-  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'flat',
+    pricePerKwh: null,
+    tariffScheduleFile: null,
+    vatPercent: 0,
+  };
 
   const points = await collectElectricity(config, '2026-01-02', '2026-01-03', SILENT_LOG);
 
@@ -602,7 +618,15 @@ test('collectElectricity skips a period with an unparseable interval instead of 
     tokenFile,
     JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
   );
-  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'flat',
+    pricePerKwh: null,
+    tariffScheduleFile: null,
+    vatPercent: 0,
+  };
 
   const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG);
 
@@ -625,7 +649,15 @@ test('collectElectricity does not backfill the meter reading unless includeMeter
     tokenFile,
     JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
   );
-  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'flat',
+    pricePerKwh: null,
+    tariffScheduleFile: null,
+    vatPercent: 0,
+  };
 
   const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG);
   assert.equal(points.filter((p) => p.metric === 'israel_utility_electricity_meter_reading_kwh').length, 0);
@@ -644,7 +676,15 @@ test('collectElectricity reconstructs the meter reading from IEC\'s own dated re
     tokenFile,
     JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
   );
-  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'flat',
+    pricePerKwh: null,
+    tariffScheduleFile: null,
+    vatPercent: 0,
+  };
 
   const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG, { includeMeterReading: true });
 
@@ -708,7 +748,15 @@ test('collectElectricity writes a same-day point from the live reading even when
     tokenFile,
     JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
   );
-  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'flat',
+    pricePerKwh: null,
+    tariffScheduleFile: null,
+    vatPercent: 0,
+  };
 
   const points = await collectElectricity(config, from, to, SILENT_LOG, { includeMeterReading: true });
 
@@ -911,6 +959,7 @@ test('collectElectricity in flat mode backfills the cost gauge from a fixed pric
     tariffMode: 'flat',
     pricePerKwh: 2,
     tariffScheduleFile: null,
+    vatPercent: 0,
   };
 
   const points = await collectElectricity(config, '2026-01-01', '2026-01-03', SILENT_LOG);
@@ -960,6 +1009,7 @@ test('collectElectricity in schedule mode backfills the effective-rate and cost 
     tariffMode: 'schedule',
     pricePerKwh: null,
     tariffScheduleFile: scheduleFile,
+    vatPercent: 0,
   };
 
   const points = await collectElectricity(config, '2026-01-01', '2026-01-02', SILENT_LOG);
@@ -994,6 +1044,37 @@ test('collectElectricity in schedule mode backfills the effective-rate and cost 
   );
 });
 
+test('collectElectricity grosses up the schedule\'s baseRatePerKwh by vatPercent, same as the live collector', async () => {
+  globalThis.fetch = fakeIecMonthlyWithDailyBreakdown({ '2026-01-01': 1 }, 1) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const scheduleFile = join(dataDir, 'schedule.json');
+  // No windows, so the blended rate is just baseRatePerKwh grossed up by VAT.
+  writeFileSync(scheduleFile, JSON.stringify({ baseRatePerKwh: 2, windows: [] }));
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'schedule',
+    pricePerKwh: null,
+    tariffScheduleFile: scheduleFile,
+    vatPercent: 18,
+  };
+
+  const points = await collectElectricity(config, '2026-01-01', '2026-01-01', SILENT_LOG);
+
+  const ratePoints = points.filter((p) => p.metric === 'israel_utility_electricity_effective_rate_ils_per_kwh');
+  assert.deepEqual(new Map(ratePoints.map((p) => [p.timestampMs, p.value])), new Map([[dateToEpochSeconds('2026-01-01') * 1000, 2.36]]));
+
+  const costPoints = points.filter((p) => p.metric === 'israel_utility_electricity_cost_estimate_ils');
+  assert.deepEqual(new Map(costPoints.map((p) => [p.timestampMs, p.value])), new Map([[dateToEpochSeconds('2026-01-01') * 1000, 2.36]]));
+});
+
 test('collectElectricity validates an invalid tariff schedule before making any IEC network call, not after', async () => {
   let fetchCalled = false;
   globalThis.fetch = (async () => {
@@ -1016,6 +1097,7 @@ test('collectElectricity validates an invalid tariff schedule before making any 
     tariffMode: 'schedule',
     pricePerKwh: null,
     tariffScheduleFile: scheduleFile,
+    vatPercent: 0,
   };
 
   await assert.rejects(() => collectElectricity(config, '2026-01-01', '2026-01-02', SILENT_LOG), TariffScheduleError);

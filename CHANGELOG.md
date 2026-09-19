@@ -9,7 +9,48 @@ Each released version has a matching `vX.Y.Z` git tag; the release workflow uses
 the section below the matching heading as the GitHub release notes, so keep the
 headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
-## [Unreleased]
+## [0.6.4] - 2026-09-19
+
+### Added
+
+- `VAT_PERCENT` environment variable (default `18`, Israel's standard rate)
+  that grosses up every configured price — `WATER_PRICE_PER_CUBIC_METER`,
+  `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`,
+  and a tariff schedule file's `baseRatePerKwh` — before it reaches any cost
+  or rate metric, for both the live collectors and the backfill CLI. Added
+  after checking a real IEC-supplier electricity bill: its per-kWh line
+  items are explicitly labeled "לא כולל מע"מ" (not including VAT), with VAT
+  added once, separately, on the invoice total — so a rate pasted straight
+  off a bill's per-unit breakdown was being undercounted by ~18%, with no
+  way to correct for it. **This changes cost/rate output for anyone already
+  using `WATER_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`, or a
+  tariff schedule** — those prices are now grossed up by 18% by default.
+  Israeli water tariffs are conventionally published the other way around
+  (already VAT-inclusive), unlike electricity — see the updated worked
+  example under Cost estimation in the README. Set `VAT_PERCENT=0` to keep
+  the old, un-grossed behavior.
+
+### Changed
+
+- Removed the background sparkline from the "Water/Electricity Meter
+  Reading", "Water/Electricity Cost", "Water Rate vs Normal", and
+  "Effective Rate" stat panels — confirmed directly against a real
+  account's data that Grafana's stat-panel "Area" sparkline mode isn't
+  built to render a multi-day trend at all (even with dense, correctly
+  dated data behind it, a 30-day query collapses to a barely-visible
+  sliver at the panel's right edge), so pinning it to a short window
+  bought legibility at the cost of usefulness. The actual trend already
+  lives in the "Cumulative Meter Reading" panels below, which use a
+  normal Timeseries visualization built for that job.
+- Redesigned the top two rows of each service: the rate panels ("Water
+  Rate vs Normal", "Effective Rate") were disproportionately large for a
+  single percentage, taking half a row's width. Moved them up alongside
+  the (also oversized) "Meter Reading" panel instead, and used the space
+  freed in the row below for a new "Water/Electricity Cost Trend (Month
+  to Date)" timeseries panel, plotting the month-to-date cost against
+  last month's final cost (and, for water, the portal's own forecast) as
+  an actual line graph across the dashboard's full selected range — the
+  cost panels now also get noticeably more room than before.
 
 ## [0.6.3] - 2026-09-19
 

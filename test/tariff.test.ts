@@ -129,6 +129,28 @@ test('rejects a schedule with no baseRatePerKwh', () => {
   assert.throws(() => loadTariffSchedule(path), TariffScheduleError);
 });
 
+test('loadTariffSchedule leaves baseRatePerKwh untouched when vatPercent is omitted', () => {
+  const path = scheduleFile({ baseRatePerKwh: 0.6, windows: [] });
+  assert.equal(loadTariffSchedule(path).baseRatePerKwh, 0.6);
+});
+
+test('loadTariffSchedule grosses up baseRatePerKwh by vatPercent', () => {
+  const path = scheduleFile({ baseRatePerKwh: 0.5383, windows: [] });
+  const schedule = loadTariffSchedule(path, 18);
+  assert.ok(Math.abs(schedule.baseRatePerKwh - 0.635194) < 1e-9);
+});
+
+test('loadTariffSchedule applies vatPercent before any window discount, so blendedRateForDay reflects VAT too', () => {
+  const path = scheduleFile({
+    baseRatePerKwh: 1,
+    windows: [{ days: ['thu'], start: '00:00', end: '23:59', discountPercent: 50 }],
+  });
+  const schedule = loadTariffSchedule(path, 20);
+  // Base rate grossed to 1.2, then the 50% window discount applies on top: ~0.6.
+  const rate = blendedRateForDay(schedule, THURSDAY);
+  assert.ok(Math.abs(rate - 0.6) < 0.001, `expected ~0.6, got ${rate}`);
+});
+
 test('rejects malformed JSON', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tariff-'));
   const path = join(dir, 'bad.json');

@@ -24,6 +24,16 @@
  *   unit is guaranteed at least a 2-person allowance by law, regardless of
  *   registered headcount) is priced at `normalRatePerCubicMeter`, the rest
  *   at `excessRatePerCubicMeter`.
+ *
+ * Every configured rate is treated as pre-VAT and grossed up by
+ * `VAT_PERCENT` (18% by default) before the functions below ever see it —
+ * `config.ts` does this for `WaterTariffTiers` and the flat
+ * `ElectricityPricingConfig.pricePerKwh`, and `loadTariffSchedule`'s
+ * `vatPercent` argument does it for `TariffSchedule.baseRatePerKwh` — so
+ * every rate and cost this module computes, and every gauge built from
+ * them, is already VAT-inclusive. This matches how Israeli utility bills
+ * are actually laid out: the per-unit rate is quoted before VAT, with VAT
+ * added once, separately, on the invoice total.
  */
 import { readFileSync } from 'node:fs';
 
@@ -47,7 +57,29 @@ export interface TariffSchedule {
 
 export class TariffScheduleError extends Error {}
 
-export function loadTariffSchedule(path: string): TariffSchedule {
+/**
+ * Israeli utility bills quote the per-unit rate before VAT and add מע"מ
+ * (VAT) once, separately, at the bottom of the invoice — confirmed against a
+ * real IEC-supplier bill, where the per-kWh line items are explicitly
+ * labeled "לא כולל מע"מ" (not including VAT) and the 18% VAT line only
+ * appears once, on the invoice total. So every configured price is grossed
+ * up by `vatPercent` at the point it's read (here, and in `config.ts` for
+ * everything that isn't a schedule file), rather than expecting the user to
+ * do the arithmetic themselves before pasting a rate off their bill.
+ */
+export function grossUpForVat(price: number | null, vatPercent: number): number | null {
+  return price !== null ? price * (1 + vatPercent / 100) : null;
+}
+
+/**
+ * `vatPercent` grosses up the file's `baseRatePerKwh` the same way
+ * `config.ts` grosses up `ELECTRICITY_PRICE_PER_KWH` — the schedule file is
+ * meant to hold the pre-VAT rate straight off a bill's per-window
+ * breakdown, matching how Israeli utility bills quote it. Defaults to 0 (no
+ * change) so callers that don't care about VAT — tests, mainly — don't need
+ * to pass it.
+ */
+export function loadTariffSchedule(path: string, vatPercent = 0): TariffSchedule {
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
@@ -60,7 +92,8 @@ export function loadTariffSchedule(path: string): TariffSchedule {
   } catch (error) {
     throw new TariffScheduleError(`Tariff schedule at ${path} is not valid JSON: ${describe(error)}`);
   }
-  return validateSchedule(parsed, path);
+  const schedule = validateSchedule(parsed, path);
+  return { ...schedule, baseRatePerKwh: grossUpForVat(schedule.baseRatePerKwh, vatPercent)! };
 }
 
 function validateSchedule(value: unknown, path: string): TariffSchedule {

@@ -556,7 +556,9 @@ export async function collectElectricity(
   // not after already spending IEC API quota on a run that was going to be
   // discarded anyway.
   const tariffSchedule: TariffSchedule | null =
-    config.tariffMode === 'schedule' && config.tariffScheduleFile ? loadTariffSchedule(config.tariffScheduleFile) : null;
+    config.tariffMode === 'schedule' && config.tariffScheduleFile
+      ? loadTariffSchedule(config.tariffScheduleFile, config.vatPercent)
+      : null;
 
   const client = new IecClient(config.israeliId, { log: (msg) => log.debug(`Electricity backfill: ${msg}`) });
   try {

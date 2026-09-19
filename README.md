@@ -116,6 +116,7 @@ empty `/metrics` silently.
 | `DATA_DIR` | `/data` | Where session/token state is persisted. Mount a volume here. |
 | `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
 | `WEB_CONFIG_FILE` | — | Path to a YAML file enabling TLS and/or Basic Auth. See [TLS & Basic Auth](#tls--basic-auth) below. |
+| `VAT_PERCENT` | `18` | Grosses up every configured price below (`WATER_PRICE_PER_CUBIC_METER`, `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`, and a schedule file's `baseRatePerKwh`) by this percentage, so you can enter the pre-VAT rate straight off a bill — see [Cost estimation](#cost-estimation). Applies equally to the live collectors and the backfill CLI. |
 | `WATER_ENABLED` | `false` | Set `true` to enable the water collector. |
 | `WATER_EMAIL` / `WATER_PASSWORD` | — | RYM Pro portal credentials. Required if `WATER_ENABLED`. |
 | `WATER_POLL_INTERVAL_MINUTES` | `90` | Floored at 15 — the meter itself updates at most hourly, and polling faster risks the portal's rate limit. |
@@ -173,6 +174,28 @@ matches — override it in your own compose file or `docker run`, e.g.
 Both collectors can turn consumption into an estimated cost — entirely
 optional, and off by default. Israel doesn't publish tariffs via any API, so
 you supply the price yourself:
+
+**Enter the pre-VAT rate — VAT is added automatically.** Every price you
+configure below (`WATER_PRICE_PER_CUBIC_METER`,
+`WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`, a
+schedule file's `baseRatePerKwh`) is treated as the **pre-VAT** rate;
+`VAT_PERCENT` (18% by default — Israel's standard rate) grosses it up before
+it reaches any cost or rate metric, for both utilities alike. This is
+straightforward for electricity — a real IEC-supplier bill's per-kWh line
+items are explicitly labeled "לא כולל מע"מ" (not including VAT), so the
+pre-VAT number is exactly what's on the bill. **Water is the opposite
+convention**: the Water Authority's own published tariffs are already
+VAT-inclusive (see the worked example under volume-tiered pricing below for
+how to back out the pre-VAT number before configuring it). Set
+`VAT_PERCENT=0` if you'd rather enter an already VAT-inclusive rate
+directly, or you're VAT-exempt. All of
+`israel_utility_water_cost_estimate_ils`,
+`israel_utility_water_effective_rate_ils_per_cubic_meter`,
+`israel_utility_water_tariff_normal_rate_ils_per_cubic_meter`,
+`israel_utility_electricity_cost_estimate_ils`,
+`israel_utility_electricity_cost_estimate_monthly_ils`, and
+`israel_utility_electricity_effective_rate_ils_per_kwh` are VAT-inclusive as
+a result — as is anything the backfill CLI writes for them.
 
 - **Flat pricing** (`WATER_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`):
   one price × the consumption figure. The right choice if you're not on a
@@ -243,9 +266,19 @@ you supply the price yourself:
   Yuval Lim's page says "עד 7 מ"ק לנפש **לחודשיים**" (up to 7 m3/person per
   two months) right next to "3.5 מ״ק **לחודש**" (3.5 m3/month) for the same
   allowance; use the monthly figure (`3.5`), not the bimonthly one (`7`), or
-  you'll double the real threshold. A worked example matching that same
-  page: `WATER_PRICE_PER_CUBIC_METER=8.51`,
-  `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER=15.62`,
+  you'll double the real threshold.
+
+  One more unit to watch: unlike electricity, Israel's Water Authority
+  publishes its water tariffs **already including VAT** (its own rate sheet
+  labels them "כוללים מע"מ") — the opposite convention from an electricity
+  bill's per-kWh line items. Since `VAT_PERCENT` grosses up every price
+  here the same way regardless of utility (see above), paste the **pre-VAT**
+  number, not the published one, or VAT ends up applied twice. A worked
+  example: Yuval Lim's page lists `8.51`/`15.62` ₪/m3 as its published,
+  VAT-inclusive rates; divide each by `1 + VAT_PERCENT/100` (1.18 at the
+  default 18%) to get the pre-VAT numbers to configure:
+  `WATER_PRICE_PER_CUBIC_METER=7.21`,
+  `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER=13.24`,
   `WATER_TARIFF_ALLOWANCE_PER_PERSON_CUBIC_METERS=3.5`. Also note this is
   still a calendar-month approximation of a tariff actually billed over a
   2-month cycle — usage concentrated near a bimonthly cycle boundary (e.g.
@@ -278,9 +311,9 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_water_consumption_monthly_liters` | Month-to-date consumption. |
 | `israel_utility_water_consumption_forecast_liters` | The portal's own month-end forecast. |
 | `israel_utility_water_tariff_threshold_cubic_meters` | This month's subsidized-rate threshold. Tiered tariff mode only. |
-| `israel_utility_water_effective_rate_ils_per_cubic_meter` | This month-to-date consumption's blended ILS/m3 rate. Tiered tariff mode only. |
-| `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` | The configured below-allowance rate itself, for comparison against the effective rate above. Tiered tariff mode only. |
-| `israel_utility_water_cost_estimate_ils` | Month-to-date cost, if priced (flat or tiered). |
+| `israel_utility_water_effective_rate_ils_per_cubic_meter` | This month-to-date consumption's blended ILS/m3 rate, including VAT. Tiered tariff mode only. |
+| `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` | The configured below-allowance rate itself, including VAT, for comparison against the effective rate above. Tiered tariff mode only. |
+| `israel_utility_water_cost_estimate_ils` | Month-to-date cost, if priced (flat or tiered), including VAT. |
 | `israel_utility_water_cost_estimate_forecast_ils` | Estimated cost of the portal's own month-end forecast, priced the same way. |
 | `israel_utility_water_cost_estimate_previous_month_ils` | Last calendar month's final cost, priced the same way (today's tariff, not necessarily last month's). Not backfilled — live collector only. |
 | `israel_utility_water_meter_info` | Always 1; carries `meter_serial` for dashboard joins. |
@@ -294,9 +327,9 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_electricity_consumption_daily_kwh` | Consumption for the most recently published day. |
 | `israel_utility_electricity_consumption_daily_covers_timestamp_seconds` | Which calendar day that is. |
 | `israel_utility_electricity_consumption_monthly_kwh` | Month-to-date consumption. |
-| `israel_utility_electricity_effective_rate_ils_per_kwh` | Today's blended rate — schedule tariff mode only. |
-| `israel_utility_electricity_cost_estimate_ils` | Estimated cost of the newest published day, if priced. |
-| `israel_utility_electricity_cost_estimate_monthly_ils` | Month-to-date cost, if priced — each published day priced at its own rate and summed. |
+| `israel_utility_electricity_effective_rate_ils_per_kwh` | Today's blended rate, including VAT — schedule tariff mode only. |
+| `israel_utility_electricity_cost_estimate_ils` | Estimated cost of the newest published day, if priced, including VAT. |
+| `israel_utility_electricity_cost_estimate_monthly_ils` | Month-to-date cost, if priced, including VAT — each published day priced at its own rate and summed. |
 | `israel_utility_electricity_cost_estimate_previous_month_ils` | Last calendar month's final cost, priced the same way (today's tariff, not necessarily last month's). Not backfilled — live collector only. |
 | `israel_utility_electricity_token_expires_timestamp_seconds` | When the current session token expires. |
 | `israel_utility_electricity_contract_info` | Always 1; carries `contract_number`/`address` for dashboard joins. |
