@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import type { WaterTariffTiers } from './cost/tariff.js';
+import { grossUpForVat, type WaterTariffTiers } from './cost/tariff.js';
 import type { WeeklyWindow } from './water/rympro-client.js';
 
 export class ConfigError extends Error {}
@@ -332,20 +332,6 @@ function nonNegativeFloatOr(value: string | undefined, fallback: number, field: 
     throw new ConfigError(`${field} must be a non-negative number, got "${value}".`);
   }
   return n;
-}
-
-/**
- * Israeli utility bills quote the per-unit rate before VAT and add מע"מ
- * (VAT) once, separately, at the bottom of the invoice — confirmed against a
- * real IEC-supplier bill, where the per-kWh line items are explicitly
- * labeled "לא כולל מע"מ" (not including VAT) and the 18% VAT line only
- * appears once, on the invoice total. So every configured price is grossed
- * up by `vatPercent` here, at the point it's read from the environment,
- * rather than expecting the user to do the arithmetic themselves before
- * pasting a rate off their bill.
- */
-function grossUpForVat(price: number | null, vatPercent: number): number | null {
-  return price !== null ? price * (1 + vatPercent / 100) : null;
 }
 
 function positiveIntOrNull(value: string | undefined): number | null {
