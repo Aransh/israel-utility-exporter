@@ -1,5 +1,4 @@
 {
-  "currency": "ILS",
   "baseRatePerKwh": 0.6115,
   "windows": [
     { "days": ["sun", "mon", "tue", "wed", "thu"], "start": "17:00", "end": "23:00", "discountPercent": 70 },

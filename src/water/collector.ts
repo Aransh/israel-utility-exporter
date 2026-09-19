@@ -178,6 +178,7 @@ export class WaterCollector {
       if (this.config.tariffMode === 'tiered' && this.config.tariffTiers) {
         waterGauges.tariffThresholdCubicMeters.set(labels, waterTariffThreshold(this.config.tariffTiers));
         waterGauges.effectiveRateIlsPerCubicMeter.set(labels, effectiveWaterRate(this.config.tariffTiers, snapshot.monthly));
+        waterGauges.tariffNormalRateIlsPerCubicMeter.set(labels, this.config.tariffTiers.normalRatePerCubicMeter);
       }
       const cost = this.costEstimate(snapshot.monthly);
       if (cost !== null) {

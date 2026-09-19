@@ -80,6 +80,7 @@ test('tiered tariff mode sets the threshold, effective rate, and cost gauges fro
   const body = await registry.metrics();
   assert.match(body, new RegExp(`israel_utility_water_tariff_threshold_cubic_meters\\{${LABELS}\\} 3`));
   assert.match(body, new RegExp(`israel_utility_water_effective_rate_ils_per_cubic_meter\\{${LABELS}\\} 4\\.8`));
+  assert.match(body, new RegExp(`israel_utility_water_tariff_normal_rate_ils_per_cubic_meter\\{${LABELS}\\} 2`));
   assert.match(body, new RegExp(`israel_utility_water_cost_estimate_ils\\{${LABELS}\\} 24`));
   assert.match(body, new RegExp(`israel_utility_water_cost_estimate_forecast_ils\\{${LABELS}\\} 42`));
 });

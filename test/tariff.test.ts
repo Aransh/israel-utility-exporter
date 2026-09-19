@@ -21,9 +21,11 @@ function scheduleFile(json: unknown): string {
   return path;
 }
 
-// A Thursday and a Saturday, so weekday-vs-weekend windows can be told apart
-// regardless of which day the suite happens to run on.
+// A Thursday, the Friday right after it, and a Saturday, so weekday-vs-weekend
+// windows — and day-to-day adjacency for overnight windows — can be told
+// apart regardless of which day the suite happens to run on.
 const THURSDAY = new Date(2026, 8, 17, 12); // 2026-09-17
+const FRIDAY = new Date(2026, 8, 18, 12); // 2026-09-18
 const SATURDAY = new Date(2026, 8, 19, 12); // 2026-09-19
 
 test('flat schedule (no windows) prices every day at the base rate', () => {
@@ -78,10 +80,45 @@ test('non-overlapping windows for the same day combine correctly', () => {
   assert.ok(Math.abs(blendedRateForDay(schedule, THURSDAY) - expected) < 0.001);
 });
 
-test('rejects an overnight window instead of guessing which day it belongs to', () => {
+test('an overnight window applies from its start to midnight on its listed day', () => {
+  // 23:00-01:00 discount, but only Thursday is listed — Thursday itself only
+  // gets the 23:00-24:00 tail (1h @ 0.5, 23h @ 1).
   const path = scheduleFile({
     baseRatePerKwh: 1,
     windows: [{ days: ['thu'], start: '23:00', end: '01:00', discountPercent: 50 }],
+  });
+  const schedule = loadTariffSchedule(path);
+  const expected = (23 * 1 + 1 * 0.5) / 24;
+  assert.ok(Math.abs(blendedRateForDay(schedule, THURSDAY) - expected) < 0.001);
+});
+
+test('an overnight window spills its tail into the start of the next calendar day', () => {
+  // Same schedule as above: Friday (the day after listed Thursday) gets the
+  // 00:00-01:00 head (1h @ 0.5, 23h @ 1), even though Friday isn't listed.
+  const path = scheduleFile({
+    baseRatePerKwh: 1,
+    windows: [{ days: ['thu'], start: '23:00', end: '01:00', discountPercent: 50 }],
+  });
+  const schedule = loadTariffSchedule(path);
+  const expected = (23 * 1 + 1 * 0.5) / 24;
+  assert.ok(Math.abs(blendedRateForDay(schedule, FRIDAY) - expected) < 0.001);
+});
+
+test('an overnight window does not spill into a day whose predecessor is not listed', () => {
+  // Saturday follows Friday, not Thursday, so a Thursday-only overnight
+  // window leaves Saturday untouched.
+  const path = scheduleFile({
+    baseRatePerKwh: 1,
+    windows: [{ days: ['thu'], start: '23:00', end: '01:00', discountPercent: 50 }],
+  });
+  const schedule = loadTariffSchedule(path);
+  assert.equal(blendedRateForDay(schedule, SATURDAY), 1);
+});
+
+test('rejects a window with equal start and end as ambiguous', () => {
+  const path = scheduleFile({
+    baseRatePerKwh: 1,
+    windows: [{ days: ['thu'], start: '10:00', end: '10:00', discountPercent: 50 }],
   });
   assert.throws(() => loadTariffSchedule(path), TariffScheduleError);
 });
