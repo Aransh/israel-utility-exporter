@@ -31,7 +31,9 @@
       "description": "Cumulative water meter reading.",
       "gridPos": { "x": 0, "y": 1, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_water_meter_reading_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
+      "targets": [
+        { "expr": "israel_utility_water_meter_reading_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A", "instant": true, "range": false }
+      ],
       "fieldConfig": {
         "defaults": {
           "unit": "m3",
@@ -87,7 +89,9 @@
         {
           "expr": "100 * israel_utility_water_effective_rate_ils_per_cubic_meter / israel_utility_water_tariff_normal_rate_ils_per_cubic_meter",
           "legendFormat": "Meter {{meter_id}}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -116,9 +120,9 @@
       "gridPos": { "x": 0, "y": 7, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        { "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Month to date (meter {{meter_id}})", "refId": "A" },
-        { "expr": "israel_utility_water_cost_estimate_forecast_ils", "legendFormat": "Forecast, month end (meter {{meter_id}})", "refId": "B" },
-        { "expr": "israel_utility_water_cost_estimate_previous_month_ils", "legendFormat": "Last month (meter {{meter_id}})", "refId": "C" }
+        { "expr": "israel_utility_water_cost_estimate_ils", "legendFormat": "Month to date (meter {{meter_id}})", "refId": "A", "instant": true, "range": false },
+        { "expr": "israel_utility_water_cost_estimate_forecast_ils", "legendFormat": "Forecast, month end (meter {{meter_id}})", "refId": "B", "instant": true, "range": false },
+        { "expr": "israel_utility_water_cost_estimate_previous_month_ils", "legendFormat": "Last month (meter {{meter_id}})", "refId": "C", "instant": true, "range": false }
       ],
       "fieldConfig": {
         "defaults": {
@@ -238,7 +242,9 @@
       "description": "Cumulative electricity meter reading.",
       "gridPos": { "x": 0, "y": 30, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_electricity_meter_reading_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
+      "targets": [
+        { "expr": "israel_utility_electricity_meter_reading_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A", "instant": true, "range": false }
+      ],
       "fieldConfig": {
         "defaults": {
           "unit": "kwatth",
@@ -290,7 +296,9 @@
       "description": "Today's estimated blended electricity rate. Includes VAT (see VAT_PERCENT).",
       "gridPos": { "x": 12, "y": 30, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_electricity_effective_rate_ils_per_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
+      "targets": [
+        { "expr": "israel_utility_electricity_effective_rate_ils_per_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A", "instant": true, "range": false }
+      ],
       "fieldConfig": {
         "defaults": {
           "unit": "currencyILS",
@@ -317,8 +325,8 @@
       "gridPos": { "x": 0, "y": 36, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        { "expr": "israel_utility_electricity_cost_estimate_monthly_ils", "legendFormat": "Month to date (contract {{contract_id}})", "refId": "A" },
-        { "expr": "israel_utility_electricity_cost_estimate_previous_month_ils", "legendFormat": "Last month (contract {{contract_id}})", "refId": "B" }
+        { "expr": "israel_utility_electricity_cost_estimate_monthly_ils", "legendFormat": "Month to date (contract {{contract_id}})", "refId": "A", "instant": true, "range": false },
+        { "expr": "israel_utility_electricity_cost_estimate_previous_month_ils", "legendFormat": "Last month (contract {{contract_id}})", "refId": "B", "instant": true, "range": false }
       ],
       "fieldConfig": {
         "defaults": {
