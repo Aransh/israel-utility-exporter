@@ -9,6 +9,29 @@ Each released version has a matching `vX.Y.Z` git tag; the release workflow uses
 the section below the matching heading as the GitHub release notes, so keep the
 headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
+## [0.6.5] - 2026-09-19
+
+### Fixed
+
+- The "current value" stat panels (Meter Reading, Rate vs Normal, Cost
+  Estimate, Effective Rate for both services) ran plain range queries with
+  no `instant` flag, so their displayed value depended on the dashboard's
+  selected time range — not just cosmetically, but by actually going blank.
+  Confirmed against a real deployment right after a `reset Victoria,
+  backfilled` cycle: `israel_utility_*_cost_estimate_previous_month_ils` is
+  written only by the live collector, never backfilled (see README), so
+  right after a fresh reset it only has data from redeploy-time onward — a
+  narrow recent sliver. Over the dashboard's default 30-day range, Grafana's
+  computed query step is coarse enough that none of its sample ticks
+  reliably land inside that sliver, so the panel shows "not configured"
+  even though the value exists; shrinking the range shrinks the step enough
+  to catch it, which was the reported symptom. Switched these panels'
+  queries to `instant: true` (`range: false`), which always fetches the
+  latest value as of now regardless of query step or how much history
+  exists — the correct query mode for a "what's the value right now" stat
+  panel, unlike the "Cost Trend" timeseries panels (left untouched, since
+  those genuinely need a range query to draw a trend line).
+
 ## [0.6.4] - 2026-09-19
 
 ### Added
