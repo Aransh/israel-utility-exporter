@@ -194,6 +194,7 @@ export async function collectWater(
     weeklyWindow: config.weeklyWindow,
     onRetry: (message) => log.debug(`Water backfill: ${message}`),
   });
+  log.info('Water backfill: logging in to the portal...');
   await client.login();
   const meters = await client.listMeters();
 
@@ -212,6 +213,7 @@ export async function collectWater(
   const points: SamplePoint[] = [];
   for (const meter of meters) {
     const labels = { meter_id: String(meter.meterCount), meter_serial: typeof meter.meterId === 'string' ? meter.meterId : '' };
+    log.info(`Water backfill: fetching meter ${meter.meterCount}'s daily consumption (${fetchFrom}..${to})...`);
     const daily = await client.dailyConsumptionRange(meter.meterCount, fetchFrom, to);
 
     for (const day of daily) {
@@ -515,6 +517,7 @@ export async function collectElectricity(
     );
   }
 
+  log.info('Electricity backfill: fetching account details...');
   const customer = await client.getCustomer();
   const contracts = await client.getContracts(customer.bpNumber);
   const contract = contracts[0];
@@ -535,6 +538,7 @@ export async function collectElectricity(
   const dailyByDate = new Map<string, number>();
   const points: SamplePoint[] = [];
   for (const monthStart of enumerateMonthStarts(from, to)) {
+    log.info(`Electricity backfill: fetching ${monthStart.slice(0, 7)}...`);
     const monthly = await client.getConsumption(contract.contractId, ReadingResolution.MONTHLY, monthStart);
     const monthKey = monthStart.slice(0, 7);
     const monthDays: Array<{ date: string; consumption: number }> = [];
