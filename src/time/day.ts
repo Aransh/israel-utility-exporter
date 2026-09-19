@@ -51,7 +51,8 @@ export function enumerateMonthStarts(from: string, to: string): string[] {
   return starts;
 }
 
-const MONTH_ABBREVIATIONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** Exported so callers can enumerate every possible `monthAbbreviation()` result, e.g. to clear stale label values off a long-lived Gauge. */
+export const MONTH_ABBREVIATIONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
  * Short month name (e.g. "Jul") for a YYYY-MM or YYYY-MM-DD string. A fixed

@@ -227,6 +227,122 @@ test('prices last calendar month\'s total separately from this month\'s, with th
   );
 });
 
+test('does not set the previous-month cost gauge at all when last month has no published data, rather than a misleading ₪0', async () => {
+  globalThis.fetch = (async (url: string) => {
+    const u = new URL(url);
+    if (u.hostname !== 'iecapi.iec.co.il') {
+      return new Response('', { status: 404 });
+    }
+    if (u.pathname === '/api/customer') {
+      return json({ bpNumber: 'BP1' });
+    }
+    if (u.pathname === '/api/customer/contract/BP1') {
+      return json({ contracts: [{ contractId: CONTRACT_ID }] });
+    }
+    if (u.pathname === `/api/Device/${CONTRACT_ID}`) {
+      return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
+    }
+    if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
+      // Every MONTHLY call, including the previous-month one, reports no
+      // periods at all — as IEC would for an account that didn't exist yet.
+      return json({ meterList: [{ totalConsumptionForPeriod: 0, periodConsumptions: [] }] });
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'electricity-collector-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = { ...makeConfig(tokenFile), pricePerKwh: 2 };
+  const collector = new ElectricityCollector(config, dataDir, captureLog().log);
+  await collector.start();
+  collector.stop();
+
+  const body = await registry.metrics();
+  // The metric's HELP/TYPE header lines are always present (prom-client
+  // emits those for every registered gauge regardless of whether any series
+  // was ever set) — only a `metric{...} value` data line would mean the
+  // gauge actually got set, which must not happen here.
+  assert.doesNotMatch(
+    body,
+    /israel_utility_electricity_cost_estimate_previous_month_ils\{/,
+    '`electricityMonthlyCostEstimate` returns 0, not null, for an empty day list when pricing is configured — this must be guarded explicitly, not just checked for null',
+  );
+});
+
+test('prunes the previous month gauge\'s stale month label once the calendar month rolls over, instead of leaving it stuck forever', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 1, 15).getTime() }); // Feb 15, 2026 -> "previous month" is January
+
+  globalThis.fetch = (async (url: string, init: RequestInit = {}) => {
+    const u = new URL(url);
+    if (u.hostname !== 'iecapi.iec.co.il') {
+      return new Response('', { status: 404 });
+    }
+    if (u.pathname === '/api/customer') {
+      return json({ bpNumber: 'BP1' });
+    }
+    if (u.pathname === '/api/customer/contract/BP1') {
+      return json({ contracts: [{ contractId: CONTRACT_ID }] });
+    }
+    if (u.pathname === `/api/Device/${CONTRACT_ID}`) {
+      return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
+    }
+    if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
+      const body = JSON.parse(init.body as string) as { resolution: number; fromDate: string };
+      if (body.resolution !== ReadingResolution.MONTHLY) {
+        return json({ meterList: [{ periodConsumptions: [] }] });
+      }
+      return json({
+        meterList: [
+          {
+            totalConsumptionForPeriod: 1,
+            periodConsumptions: [{ interval: new Date(dateToEpochSeconds(body.fromDate) * 1000).toISOString(), consumption: 1 }],
+          },
+        ],
+      });
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  const firstPollDataDir = mkdtempSync(join(tmpdir(), 'electricity-collector-'));
+  const firstPollTokenFile = join(firstPollDataDir, 'iec-token.json');
+  writeFileSync(
+    firstPollTokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = { ...makeConfig(firstPollTokenFile), pricePerKwh: 2 };
+  const firstCollector = new ElectricityCollector(config, firstPollDataDir, captureLog().log);
+  await firstCollector.start();
+  firstCollector.stop();
+
+  let body = await registry.metrics();
+  assert.match(body, new RegExp(`israel_utility_electricity_cost_estimate_previous_month_ils\\{contract_id="${CONTRACT_ID}",month="Jan"\\}`));
+
+  // A month passes; the live collector polls again (a fresh instance here,
+  // same as a real one would after this process's own state file already
+  // has `hasRecordedData` — the label pruning below happens in `record()`
+  // regardless of which collector instance calls it, since the underlying
+  // Gauge is a shared module-level registry).
+  t.mock.timers.setTime(new Date(2026, 2, 15).getTime()); // March 15, 2026 -> "previous month" is now February
+
+  const secondPollDataDir = mkdtempSync(join(tmpdir(), 'electricity-collector-'));
+  const secondPollTokenFile = join(secondPollDataDir, 'iec-token.json');
+  writeFileSync(
+    secondPollTokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const secondCollector = new ElectricityCollector({ ...config, tokenFile: secondPollTokenFile }, secondPollDataDir, captureLog().log);
+  await secondCollector.start();
+  secondCollector.stop();
+
+  body = await registry.metrics();
+  assert.doesNotMatch(body, /month="Jan"/, 'January\'s entry must be pruned once February becomes "last month" — a Gauge never forgets a label combination on its own');
+  assert.match(body, new RegExp(`israel_utility_electricity_cost_estimate_previous_month_ils\\{contract_id="${CONTRACT_ID}",month="Feb"\\}`));
+});
+
 test('retries persisting the flag on a later successful poll if an earlier write failed', async () => {
   globalThis.fetch = fakeIec() as typeof fetch;
 

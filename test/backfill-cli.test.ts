@@ -967,6 +967,46 @@ test('collectWater backfills the previous-month cost gauge from the extra month 
   assert.ok(previousMonthPoints.every((p) => p.labels.month === 'Dec'));
 });
 
+test('collectWater leaves the previous-month cost gauge unset when the account has no data that far back, rather than a misleading ₪0', async () => {
+  // The portal reports nothing before 2026-01-01 (as if the account was
+  // only created that day), so the extra month `collectWater` reaches back
+  // to (December) comes back empty.
+  const accountStart = '2026-01-01';
+  globalThis.fetch = (async (url: string) => {
+    const path = new URL(url).pathname;
+    if (path === '/consumer/login') return json({ token: 'tok' });
+    if (path === '/consumption/last-read') return json([{ meterCount: METER_COUNT, meterId: 'SER1', read: 100 }]);
+    if (path.startsWith(`/consumption/daily/${METER_COUNT}/`)) {
+      const [from, to] = path.split('/').slice(-2) as [string, string];
+      const rows: unknown[] = [];
+      for (let date = from; date <= to; date = shiftDays(date, 1)) {
+        if (date >= accountStart) {
+          rows.push({ meterCount: METER_COUNT, consDate: `${date}T00:00:00`, cons: 1 });
+        }
+      }
+      return json(rows);
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  const config: WaterConfig = {
+    email: 'a@example.com',
+    password: 'x',
+    pollIntervalMs: 60_000,
+    weeklyWindow: 'sunday',
+    tariffMode: 'flat',
+    pricePerCubicMeter: 3,
+    tariffTiers: null,
+  };
+  const points = await collectWater(config, '2026-01-01', '2026-01-03', SILENT_LOG);
+
+  assert.equal(
+    points.filter((p) => p.metric === 'israel_utility_water_cost_estimate_previous_month_ils').length,
+    0,
+    'no December data exists, so no previous-month point should be written at all — not one priced at ₪0',
+  );
+});
+
 test('collectElectricity in flat mode backfills the cost gauge from a fixed price per kWh, without an effective-rate gauge', async () => {
   globalThis.fetch = fakeIecMonthlyWithDailyBreakdown({ '2026-01-01': 1, '2026-01-02': 2, '2026-01-03': 3 }, 6) as typeof fetch;
 
@@ -1151,6 +1191,39 @@ test('collectElectricity backfills the previous-month cost gauge, bootstrapping 
   assert.equal(februaryPoints.length, 1);
   assert.ok(februaryPoints.every((p) => p.value === 4 * 2), 'January: 2+2 kWh at 2 ILS/kWh');
   assert.ok(februaryPoints.every((p) => p.labels.month === 'Jan'));
+});
+
+test('collectElectricity leaves the previous-month cost gauge unset when the bootstrap month has no data, rather than a misleading ₪0', async () => {
+  // '2025-12' is deliberately absent from the map — `fakeIecMonthlyByMonth`
+  // reports an empty period list for any month it doesn't recognize, as IEC
+  // would for an account that didn't exist yet.
+  globalThis.fetch = fakeIecMonthlyByMonth({
+    '2026-01': { daily: { '2026-01-01': 2 }, monthTotal: 2 },
+  }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'flat',
+    pricePerKwh: 2,
+    tariffScheduleFile: null,
+    vatPercent: 0,
+  };
+
+  const points = await collectElectricity(config, '2026-01-01', '2026-01-01', SILENT_LOG);
+
+  assert.equal(
+    points.filter((p) => p.metric === 'israel_utility_electricity_cost_estimate_previous_month_ils').length,
+    0,
+    'no December data exists, so no previous-month point should be written at all — not one priced at ₪0',
+  );
 });
 
 test('collectElectricity grosses up the schedule\'s baseRatePerKwh by vatPercent, same as the live collector', async () => {
