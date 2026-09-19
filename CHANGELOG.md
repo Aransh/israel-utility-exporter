@@ -82,6 +82,20 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   trend into a thin band. Fixed by setting `fieldMinMax: true` so each
   field's sparkline scales to its own range instead of sharing one across
   the whole panel.
+
+## [0.6.2] - 2026-09-19
+
+### Changed
+
+- `backfill-cli.js` now logs an info-level line before each meter's daily
+  fetch (water) and each month's fetch (electricity), plus one for
+  login/account-details — a multi-month backfill makes several sequential
+  portal/IEC API calls that can each take a couple of seconds, but at the
+  default `LOG_LEVEL=info` a slow-but-working run and a genuinely hung one
+  previously looked identical from the terminal.
+
+### Fixed
+
 - The "Water/Electricity Collector Health" panels could read "No data" at
   the dashboard's default 30-day range immediately after a fresh start (e.g.
   right after clearing and backfilling the datastore), even though the
@@ -93,6 +107,17 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   make sense for it to depend on the dashboard's selected range at all —
   fixed by pinning it to `timeFrom: 10m`, independent of the rest of the
   dashboard, so it always evaluates against a fine-grained recent window.
+- A fresh `backfill-cli.js` run left the meter-reading/cost/rate sparkline
+  panels above just as empty as a brand new install, since backfill only
+  ever wrote one point per day (the portals' own resolution) and those
+  panels are pinned to a 2-day window — one point in 2 days looks like no
+  data. Backfill is meant to make a freshly reset instance immediately
+  usable, not something that quietly needs a day or two of live scraping
+  first. For however much of the requested range falls within the last few
+  days, `backfill-cli.js` now writes each of those metrics' value
+  repeatedly through the day (every 5 minutes) instead of once — the same
+  shape a live scrape record of that day actually has, since the gauge sits
+  flat between polls and gets sampled every `scrape_interval` regardless.
 
 ## [0.6.0] - 2026-09-19
 
