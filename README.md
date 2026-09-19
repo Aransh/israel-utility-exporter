@@ -282,6 +282,7 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` | The configured below-allowance rate itself, for comparison against the effective rate above. Tiered tariff mode only. |
 | `israel_utility_water_cost_estimate_ils` | Month-to-date cost, if priced (flat or tiered). |
 | `israel_utility_water_cost_estimate_forecast_ils` | Estimated cost of the portal's own month-end forecast, priced the same way. |
+| `israel_utility_water_cost_estimate_previous_month_ils` | Last calendar month's final cost, priced the same way (today's tariff, not necessarily last month's). Not backfilled — live collector only. |
 | `israel_utility_water_meter_info` | Always 1; carries `meter_serial` for dashboard joins. |
 | `israel_utility_water_scrape_success` / `..._last_success_timestamp_seconds` / `..._consecutive_failures` | Collector health. |
 
@@ -296,6 +297,7 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_electricity_effective_rate_ils_per_kwh` | Today's blended rate — schedule tariff mode only. |
 | `israel_utility_electricity_cost_estimate_ils` | Estimated cost of the newest published day, if priced. |
 | `israel_utility_electricity_cost_estimate_monthly_ils` | Month-to-date cost, if priced — each published day priced at its own rate and summed. |
+| `israel_utility_electricity_cost_estimate_previous_month_ils` | Last calendar month's final cost, priced the same way (today's tariff, not necessarily last month's). Not backfilled — live collector only. |
 | `israel_utility_electricity_token_expires_timestamp_seconds` | When the current session token expires. |
 | `israel_utility_electricity_contract_info` | Always 1; carries `contract_number`/`address` for dashboard joins. |
 | `israel_utility_electricity_scrape_success` / `..._last_success_timestamp_seconds` / `..._consecutive_failures` | Collector health. |

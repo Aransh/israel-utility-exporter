@@ -502,25 +502,20 @@ export class IecClient {
 
     const now = new Date();
     const dailyFrom = isoDate(addDays(now, -DAILY_LOOKBACK_DAYS));
-    const monthlyFrom = isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthlyFrom = isoDate(monthStart);
+    // The last day of the previous month — the endpoint keys MONTHLY off
+    // whatever month `fromDate` falls in, so any date within that month
+    // works (see `getConsumption`'s doc comment).
+    const previousMonthFrom = isoDate(new Date(monthStart.getFullYear(), monthStart.getMonth(), 0));
 
     const daily = await this.getConsumption(contract.contractId, ReadingResolution.DAILY, dailyFrom);
     const monthly = await this.getConsumption(contract.contractId, ReadingResolution.MONTHLY, monthlyFrom);
+    const previousMonthly = await this.getConsumption(contract.contractId, ReadingResolution.MONTHLY, previousMonthFrom);
 
     const newestDaily = [...daily.periods]
       .filter((p) => Number.isFinite(p.consumption))
       .sort((a, b) => b.interval.localeCompare(a.interval))[0];
-
-    // MONTHLY already returns one period per calendar day within the month
-    // (confirmed in the backfill CLI against a same-day DAILY call's
-    // totalForPeriod) — reused here, at no extra API cost, to price the
-    // month-to-date cost day by day rather than only by today's rate.
-    const monthlyDailyConsumption = monthly.periods
-      .map((p) => {
-        const parsed = new Date(p.interval);
-        return Number.isFinite(parsed.getTime()) ? { date: isoDate(parsed), consumption: p.consumption } : null;
-      })
-      .filter((p): p is { date: string; consumption: number } => p !== null);
 
     return {
       contractId: contract.contractId,
@@ -530,10 +525,26 @@ export class IecClient {
       daily: newestDaily?.consumption ?? null,
       dailyDate: newestDaily ? newestDaily.interval.slice(0, 10) : null,
       monthly: monthly.totalForPeriod,
-      monthlyDailyConsumption,
+      // MONTHLY already returns one period per calendar day within the
+      // month (confirmed in the backfill CLI against a same-day DAILY
+      // call's totalForPeriod) — reused here, at no extra API cost beyond
+      // the one already-needed monthly call, to price month-to-date cost
+      // day by day rather than only by today's rate.
+      monthlyDailyConsumption: dailyBreakdown(monthly.periods),
+      previousMonthDailyConsumption: dailyBreakdown(previousMonthly.periods),
       tokenExpiresAt: this.tokenExpiresAt(),
     };
   }
+}
+
+/** `PeriodConsumption[]` (raw UTC-timestamped intervals) to `{date, consumption}[]` keyed by local calendar day. */
+function dailyBreakdown(periods: PeriodConsumption[]): Array<{ date: string; consumption: number }> {
+  return periods
+    .map((p) => {
+      const parsed = new Date(p.interval);
+      return Number.isFinite(parsed.getTime()) ? { date: isoDate(parsed), consumption: p.consumption } : null;
+    })
+    .filter((p): p is { date: string; consumption: number } => p !== null);
 }
 
 export interface ElectricitySnapshot {
@@ -550,6 +561,8 @@ export interface ElectricitySnapshot {
   monthly: number | null;
   /** One entry per calendar day within the current month IEC has published consumption for, used to price month-to-date cost day by day. */
   monthlyDailyConsumption: Array<{ date: string; consumption: number }>;
+  /** Same as `monthlyDailyConsumption`, but for last calendar month, used to price its final cost for comparison. */
+  previousMonthDailyConsumption: Array<{ date: string; consumption: number }>;
   /** Epoch seconds the current id_token expires at, for the token-expiry alert. */
   tokenExpiresAt: number | null;
 }

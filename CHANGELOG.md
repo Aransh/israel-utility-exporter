@@ -22,6 +22,16 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   alone. Also backfilled by `backfill-cli.js`. The "Electricity Cost
   Estimate (Newest Day)" dashboard panel now shows this month-to-date figure
   instead, matching the "Water Cost" panel's treatment.
+- `israel_utility_water_cost_estimate_previous_month_ils` and
+  `israel_utility_electricity_cost_estimate_previous_month_ils`: last
+  calendar month's final cost, for comparison against the month-to-date
+  figure — priced with today's tariff, not necessarily the one that applied
+  last month, same caveat as everything else this exporter prices
+  historically. Live collectors only (one extra API call per poll to fetch
+  last month's total); not backfilled. Shown as a muted (gray, no sparkline)
+  third value in the "Water Cost" and "Electricity Cost (Month to Date)"
+  dashboard panels — Grafana stat panels don't support a smaller font per
+  value, only per-value color, so that's as visually secondary as it gets.
 
 ### Fixed
 

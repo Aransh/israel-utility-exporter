@@ -192,6 +192,12 @@ export class WaterCollector {
         waterGauges.costEstimateForecastIls.set(labels, forecastCost);
       }
     }
+    if (snapshot.previousMonth !== null) {
+      const previousMonthCost = this.costEstimate(snapshot.previousMonth);
+      if (previousMonthCost !== null) {
+        waterGauges.costEstimatePreviousMonthIls.set(labels, previousMonthCost);
+      }
+    }
   }
 
   /** ILS cost of `consumptionCubicMeters` under the configured tariff, or null if no pricing is configured. */

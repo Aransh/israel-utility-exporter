@@ -166,6 +166,63 @@ test('flat tariff mode sets the month-to-date cost gauge from each published day
   assert.match(body, new RegExp(`israel_utility_electricity_cost_estimate_monthly_ils\\{contract_id="${CONTRACT_ID}"\\} 12`));
 });
 
+test('prices last calendar month\'s total separately from this month\'s, with the same tariff', async () => {
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  globalThis.fetch = (async (url: string, init: RequestInit = {}) => {
+    const u = new URL(url);
+    if (u.hostname !== 'iecapi.iec.co.il') {
+      return new Response('', { status: 404 });
+    }
+    if (u.pathname === '/api/customer') {
+      return json({ bpNumber: 'BP1' });
+    }
+    if (u.pathname === '/api/customer/contract/BP1') {
+      return json({ contracts: [{ contractId: CONTRACT_ID }] });
+    }
+    if (u.pathname === `/api/Device/${CONTRACT_ID}`) {
+      return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
+    }
+    if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
+      const body = JSON.parse(init.body as string) as { resolution: number; fromDate: string };
+      if (body.resolution !== ReadingResolution.MONTHLY) {
+        return json({ meterList: [{ periodConsumptions: [] }] });
+      }
+      const dailyByLocalDate = body.fromDate.slice(0, 7) === currentMonthKey ? { [body.fromDate]: 5 } : { [body.fromDate]: 8 };
+      const total = Object.values(dailyByLocalDate).reduce((sum, v) => sum + v, 0);
+      return json({
+        meterList: [
+          {
+            totalConsumptionForPeriod: total,
+            periodConsumptions: Object.entries(dailyByLocalDate).map(([localDate, consumption]) => ({
+              interval: new Date(dateToEpochSeconds(localDate) * 1000).toISOString(),
+              consumption,
+            })),
+          },
+        ],
+      });
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'electricity-collector-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = { ...makeConfig(tokenFile), pricePerKwh: 2 };
+  const collector = new ElectricityCollector(config, dataDir, captureLog().log);
+  await collector.start();
+  collector.stop();
+
+  // this month: 5 kWh @ 2 = 10; last month: 8 kWh @ 2 = 16.
+  const body = await registry.metrics();
+  assert.match(body, new RegExp(`israel_utility_electricity_cost_estimate_monthly_ils\\{contract_id="${CONTRACT_ID}"\\} 10`));
+  assert.match(body, new RegExp(`israel_utility_electricity_cost_estimate_previous_month_ils\\{contract_id="${CONTRACT_ID}"\\} 16`));
+});
+
 test('retries persisting the flag on a later successful poll if an earlier write failed', async () => {
   globalThis.fetch = fakeIec() as typeof fetch;
 

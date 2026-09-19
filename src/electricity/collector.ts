@@ -159,6 +159,15 @@ export class ElectricityCollector {
       electricityGauges.costEstimateMonthlyIls.set(labels, monthlyCost);
     }
 
+    const previousMonthCost = electricityMonthlyCostEstimate(
+      this.config,
+      this.tariffSchedule,
+      snapshot.previousMonthDailyConsumption.map((day) => ({ date: parseYmdNoon(day.date), consumption: day.consumption })),
+    );
+    if (previousMonthCost !== null) {
+      electricityGauges.costEstimatePreviousMonthIls.set(labels, previousMonthCost);
+    }
+
     if (snapshot.daily === null || !snapshot.dailyDate) {
       return;
     }

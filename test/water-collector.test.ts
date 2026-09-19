@@ -101,6 +101,49 @@ test('flat tariff mode also prices the forecast, the same way as the month-to-da
   assert.match(body, new RegExp(`israel_utility_water_cost_estimate_forecast_ils\\{${LABELS}\\} 21`));
 });
 
+test('prices last calendar month\'s total separately from this month\'s, with the same tariff', async () => {
+  const today = new Date();
+  const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+  globalThis.fetch = (async (url: string, init: RequestInit = {}) => {
+    const path = new URL(url).pathname;
+    if (path === '/consumer/login') {
+      return json({ token: 'tok' });
+    }
+    const headers = init.headers as Record<string, string> | undefined;
+    if (!headers?.['x-access-token']) {
+      return new Response('', { status: 401 });
+    }
+    if (path === '/consumption/last-read') {
+      return json([{ meterCount: METER_ID, meterId: 'SER1', read: 100 }]);
+    }
+    if (path.startsWith(`/consumption/daily/${METER_ID}/`)) {
+      return json([]);
+    }
+    if (path.startsWith(`/consumption/monthly/${METER_ID}/`)) {
+      const requestedDate = path.split('/')[4]!;
+      const cons = requestedDate.slice(0, 7) === currentMonthKey ? 5 : 8;
+      return json([{ meterCount: METER_ID, consDate: `${requestedDate}T00:00:00`, cons }]);
+    }
+    if (path === `/consumption/forecast/${METER_ID}`) {
+      return json({ estimatedConsumption: null });
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'water-collector-'));
+  const config: WaterConfig = { ...makeConfig(), pricePerCubicMeter: 3 };
+  const collector = new WaterCollector(config, dataDir, captureLog().log);
+  await collector.start();
+  collector.stop();
+
+  // this month: 5 m3 @ 3 = 15; last month: 8 m3 @ 3 = 24.
+  const LABELS = 'meter_id="55123",meter_serial="SER1"';
+  const body = await registry.metrics();
+  assert.match(body, new RegExp(`israel_utility_water_cost_estimate_ils\\{${LABELS}\\} 15`));
+  assert.match(body, new RegExp(`israel_utility_water_cost_estimate_previous_month_ils\\{${LABELS}\\} 24`));
+});
+
 test('logs the backfill hint on a genuine first run, and not again once data has been recorded', async () => {
   globalThis.fetch = fakePortal() as typeof fetch;
   const dataDir = mkdtempSync(join(tmpdir(), 'water-collector-'));
