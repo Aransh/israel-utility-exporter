@@ -95,7 +95,8 @@
           "unit": "currencyILS",
           "decimals": 2,
           "noValue": "not configured",
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "fieldMinMax": true
         },
         "overrides": [
           {
@@ -276,7 +277,8 @@
           "unit": "currencyILS",
           "decimals": 2,
           "noValue": "not configured",
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "fieldMinMax": true
         },
         "overrides": [
           {

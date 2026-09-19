@@ -73,6 +73,15 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   to `timeFrom: 2d`, independent of whatever range the rest of the dashboard
   is showing — the same real per-minute Prometheus scrape data that made the
   sparkline invisible at 30 days renders it fine at 2.
+- The "Water Cost" and "Electricity Cost (Month to Date)" panels' sparklines
+  for the "Month to date"/"Forecast" values rendered as a barely-visible
+  sliver even after the fix above, because a stat panel with multiple fields
+  auto-scales its sparklines' Y-axis using *all* fields' values by default —
+  including "Last month" (a much larger number that doesn't even draw a
+  sparkline itself, `graphMode: none`), which squashed the actually-relevant
+  trend into a thin band. Fixed by setting `fieldMinMax: true` so each
+  field's sparkline scales to its own range instead of sharing one across
+  the whole panel.
 
 ## [0.6.0] - 2026-09-19
 
