@@ -303,7 +303,7 @@ Plus `israel_utility_exporter_build_info{version="..."}`.
 
 ## Grafana dashboard & Prometheus alerts
 
-![Water pricing row: cost estimate with a month-to-date sparkline, and the effective rate as a percentage of the normal rate, turning orange once the excess tier kicks in](docs/dashboard-water-pricing.png)
+![Water row: meter reading, collector health, cost estimate with a month-to-date sparkline, the effective rate as a percentage of the normal rate (turning orange once the excess tier kicks in), daily/weekly/monthly consumption, and the cumulative meter reading trend](docs/dashboard-water-pricing.png)
 
 ![Electricity row: meter reading, collector health, cost estimate and effective rate (both with the same sparkline treatment as water), daily/monthly consumption, and the cumulative meter reading trend](docs/dashboard-electricity.png)
 
