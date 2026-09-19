@@ -305,17 +305,24 @@ Plus `israel_utility_exporter_build_info{version="..."}`.
 
 ![Water pricing row: cost estimate with a month-to-date sparkline, and the effective rate as a percentage of the normal rate, turning orange once the excess tier kicks in](docs/dashboard-water-pricing.png)
 
+![Electricity row: meter reading, collector health, cost estimate, and the schedule-mode effective rate, both with the same sparkline treatment as water](docs/dashboard-electricity.png)
+
 - `grafana/provisioning/dashboards/files/dashboard.json` — auto-provisioned by
   `docker-compose.yml`, or import it manually into your own Grafana. Two
   rows, Water and Electricity, each showing the cumulative meter trend,
   daily/monthly consumption over time, cost estimate, and collector health —
-  a row simply shows "No data" if that collector is disabled. The water
-  row's pricing panels (screenshot above) show month-to-date cost and the
+  a row simply shows "No data" if that collector is disabled. Each row's
+  meter-reading panel gets most of the width, since it's the one with a
+  sparkline worth seeing; collector health is just an Up/Down badge, so it
+  only gets a narrow strip rather than half the row. The water row's
+  pricing panels (top screenshot) show month-to-date cost and the
   portal's forecast side by side with a sparkline of the trend, plus the
   effective rate expressed as a percentage of the normal (below-allowance)
   rate — 100% means every m3 so far is priced at the normal rate, and the
   panel background turns orange once the month has spilled into the pricier
-  excess tier.
+  excess tier. Electricity's pricing row (bottom screenshot) is simpler —
+  no tiers, so no equivalent rate-vs-normal panel — but its cost estimate
+  gets the same sparkline treatment for visual consistency.
 - `prometheus/alerts.yml` — two rule groups:
   - **Health alerts** (safe to run as shipped): the exporter being
     unreachable, either collector going stale (no successful poll in 6h) or

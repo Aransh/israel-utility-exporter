@@ -50,17 +50,27 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   tariff config never had an equivalent field either. Existing schedule
   files that still set `currency` continue to load fine; the key is just
   ignored.
-- Redesigned the water dashboard's pricing row: merged "Cost Estimate" and
-  "Forecast Cost Estimate" into one "Water Cost" panel (both values, plus a
-  sparkline of the month-to-date figure over the dashboard's time range, so
-  the cost trend is visible instead of only the current number), dropped the
-  standalone "Tariff Threshold" panel (redundant with the dashed "Monthly
-  Limit" line already on the consumption graph), and gave "Effective Rate" a
-  background color flag (green/orange) driven by the new
-  `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` metric, so
-  crossing into the excess tier is visible at a glance instead of requiring
-  a mental comparison against a number you have to already know. Six stat
-  panels in that row down to four.
+- Redesigned the dashboard's Water and Electricity rows for consistency and
+  less wasted space:
+  - Each row's meter-reading panel now gets most of the row's width (it has
+    a sparkline worth seeing); collector health is just an Up/Down badge and
+    now only gets a narrow strip instead of half the row.
+  - Water: merged "Cost Estimate" and "Forecast Cost Estimate" into one
+    "Water Cost" panel (both values, plus a sparkline of the month-to-date
+    figure over the dashboard's time range, so the cost trend is visible
+    instead of only the current number), dropped the standalone "Tariff
+    Threshold" panel (redundant with the dashed "Monthly Limit" line already
+    on the consumption graph), and replaced "Effective Rate" with "Water
+    Rate vs Normal" — the blended rate as a percentage of the configured
+    normal (below-allowance) rate, using the new
+    `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter` metric —
+    100% means every m3 so far is priced at the normal rate, and the panel
+    background turns orange once the month has spilled into the excess
+    tier. Six stat panels in that row down to four.
+  - Electricity: split the single 4-panel row into an identity row (meter
+    reading, health) and a money row (cost estimate, effective rate), matching
+    water's layout, and gave "Cost Estimate" and "Effective Rate" the same
+    sparkline treatment as water's cost panels.
 
 ## [0.5.0] - 2026-09-18
 
