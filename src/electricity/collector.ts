@@ -46,7 +46,7 @@ export class ElectricityCollector {
     if (config.tariffMode === 'schedule' && config.tariffScheduleFile) {
       // Loaded once at startup and validated eagerly: a bad schedule file
       // should fail the exporter at boot, not silently stop pricing later.
-      this.tariffSchedule = loadTariffSchedule(config.tariffScheduleFile);
+      this.tariffSchedule = loadTariffSchedule(config.tariffScheduleFile, config.vatPercent);
     }
   }
 

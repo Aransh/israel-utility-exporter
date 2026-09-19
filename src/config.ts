@@ -26,10 +26,20 @@ export interface ElectricityConfig {
   tokenFile: string;
   pollIntervalMs: number;
   tariffMode: ElectricityTariffMode;
-  /** ILS per kWh, used when tariffMode is "flat". Null disables cost estimation in flat mode. */
+  /** ILS per kWh, already grossed up by `vatPercent`, used when tariffMode is "flat". Null disables cost estimation in flat mode. */
   pricePerKwh: number | null;
   /** Path to a time-of-use schedule JSON file, used when tariffMode is "schedule". */
   tariffScheduleFile: string | null;
+  /**
+   * From `VAT_PERCENT`. Water's rates are grossed up by this once, here in
+   * config loading (see `loadWaterConfig`); electricity's flat `pricePerKwh`
+   * above is grossed up the same way, but the schedule file's
+   * `baseRatePerKwh` lives outside this config object and is loaded
+   * separately (by the live collector and the backfill CLI, each fetching
+   * it fresh), so this is carried along for `loadTariffSchedule` to apply
+   * it there instead.
+   */
+  vatPercent: number;
 }
 
 export interface RemoteWriteTlsConfig {
@@ -79,6 +89,8 @@ const DEFAULT_WATER_POLL_MINUTES = 90;
 const DEFAULT_ELECTRICITY_POLL_MINUTES = 60;
 const DEFAULT_PORT = 9877;
 const DEFAULT_DATA_DIR = '/data';
+/** Israel's standard VAT rate at the time of writing — see `VAT_PERCENT`. */
+const DEFAULT_VAT_PERCENT = 18;
 
 /**
  * Loads and validates configuration from the environment. Throws
@@ -91,9 +103,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const dataDir = env.DATA_DIR?.trim() || DEFAULT_DATA_DIR;
   const logLevel = asLogLevel(env.LOG_LEVEL);
   const webConfigFile = env.WEB_CONFIG_FILE?.trim() || null;
+  const vatPercent = nonNegativeFloatOr(env.VAT_PERCENT, DEFAULT_VAT_PERCENT, 'VAT_PERCENT');
 
-  const water = isEnabled(env.WATER_ENABLED) ? loadWaterConfig(env) : null;
-  const electricity = isEnabled(env.ELECTRICITY_ENABLED) ? loadElectricityConfig(env, dataDir) : null;
+  const water = isEnabled(env.WATER_ENABLED) ? loadWaterConfig(env, vatPercent) : null;
+  const electricity = isEnabled(env.ELECTRICITY_ENABLED) ? loadElectricityConfig(env, dataDir, vatPercent) : null;
 
   if (!water && !electricity) {
     throw new ConfigError(
@@ -196,7 +209,7 @@ function parseExtraLabels(value: string | undefined): Record<string, string> {
   return labels;
 }
 
-function loadWaterConfig(env: NodeJS.ProcessEnv): WaterConfig {
+function loadWaterConfig(env: NodeJS.ProcessEnv, vatPercent: number): WaterConfig {
   const email = env.WATER_EMAIL?.trim();
   const password = env.WATER_PASSWORD;
   if (!email || !password) {
@@ -207,8 +220,8 @@ function loadWaterConfig(env: NodeJS.ProcessEnv): WaterConfig {
     env.WATER_WEEKLY_WINDOW === 'monday' || env.WATER_WEEKLY_WINDOW === 'rolling' ? env.WATER_WEEKLY_WINDOW : 'sunday';
 
   const tariffMode: WaterTariffMode = env.WATER_TARIFF_MODE === 'tiered' ? 'tiered' : 'flat';
-  const pricePerCubicMeter = positiveFloatOrNull(env.WATER_PRICE_PER_CUBIC_METER);
-  const tariffTiers = tariffMode === 'tiered' ? loadWaterTariffTiers(env, pricePerCubicMeter) : null;
+  const pricePerCubicMeter = grossUpForVat(positiveFloatOrNull(env.WATER_PRICE_PER_CUBIC_METER), vatPercent);
+  const tariffTiers = tariffMode === 'tiered' ? loadWaterTariffTiers(env, pricePerCubicMeter, vatPercent) : null;
 
   return {
     email,
@@ -227,13 +240,13 @@ function loadWaterConfig(env: NodeJS.ProcessEnv): WaterConfig {
  * price below the tiered mode's allowance threshold, or the only price in
  * flat mode.
  */
-function loadWaterTariffTiers(env: NodeJS.ProcessEnv, normalRatePerCubicMeter: number | null): WaterTariffTiers {
+function loadWaterTariffTiers(env: NodeJS.ProcessEnv, normalRatePerCubicMeter: number | null, vatPercent: number): WaterTariffTiers {
   if (normalRatePerCubicMeter === null) {
     throw new ConfigError(
       'WATER_TARIFF_MODE is "tiered" but WATER_PRICE_PER_CUBIC_METER (the below-allowance rate) is missing or not a positive number.',
     );
   }
-  const excessRatePerCubicMeter = positiveFloatOrNull(env.WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER);
+  const excessRatePerCubicMeter = grossUpForVat(positiveFloatOrNull(env.WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER), vatPercent);
   if (excessRatePerCubicMeter === null) {
     throw new ConfigError('WATER_TARIFF_MODE is "tiered" but WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER is missing or not a positive number.');
   }
@@ -250,14 +263,14 @@ function loadWaterTariffTiers(env: NodeJS.ProcessEnv, normalRatePerCubicMeter: n
   return { normalRatePerCubicMeter, excessRatePerCubicMeter, householdSize, allowancePerPersonCubicMeters };
 }
 
-function loadElectricityConfig(env: NodeJS.ProcessEnv, dataDir: string): ElectricityConfig {
+function loadElectricityConfig(env: NodeJS.ProcessEnv, dataDir: string, vatPercent: number): ElectricityConfig {
   const israeliId = env.ELECTRICITY_ID?.trim();
   if (!israeliId || !/^\d{9}$/.test(israeliId)) {
     throw new ConfigError('ELECTRICITY_ENABLED is true but ELECTRICITY_ID is missing or not a 9-digit Israeli ID.');
   }
 
   const tariffMode: ElectricityTariffMode = env.ELECTRICITY_TARIFF_MODE === 'schedule' ? 'schedule' : 'flat';
-  const pricePerKwh = positiveFloatOrNull(env.ELECTRICITY_PRICE_PER_KWH);
+  const pricePerKwh = grossUpForVat(positiveFloatOrNull(env.ELECTRICITY_PRICE_PER_KWH), vatPercent);
   const tariffScheduleFile = env.ELECTRICITY_TARIFF_SCHEDULE_FILE?.trim() || null;
 
   if (tariffMode === 'schedule' && !tariffScheduleFile) {
@@ -272,6 +285,7 @@ function loadElectricityConfig(env: NodeJS.ProcessEnv, dataDir: string): Electri
     tariffMode,
     pricePerKwh,
     tariffScheduleFile,
+    vatPercent,
   };
 }
 
@@ -307,6 +321,31 @@ function positiveFloatOrNull(value: string | undefined): number | null {
   }
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function nonNegativeFloatOr(value: string | undefined, fallback: number, field: string): number {
+  if (value === undefined || value.trim() === '') {
+    return fallback;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new ConfigError(`${field} must be a non-negative number, got "${value}".`);
+  }
+  return n;
+}
+
+/**
+ * Israeli utility bills quote the per-unit rate before VAT and add מע"מ
+ * (VAT) once, separately, at the bottom of the invoice — confirmed against a
+ * real IEC-supplier bill, where the per-kWh line items are explicitly
+ * labeled "לא כולל מע"מ" (not including VAT) and the 18% VAT line only
+ * appears once, on the invoice total. So every configured price is grossed
+ * up by `vatPercent` here, at the point it's read from the environment,
+ * rather than expecting the user to do the arithmetic themselves before
+ * pasting a rate off their bill.
+ */
+function grossUpForVat(price: number | null, vatPercent: number): number | null {
+  return price !== null ? price * (1 + vatPercent / 100) : null;
 }
 
 function positiveIntOrNull(value: string | undefined): number | null {

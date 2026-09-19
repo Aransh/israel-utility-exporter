@@ -60,7 +60,7 @@ function captureLog(): { log: Logger; lines: string[] } {
 }
 
 function makeConfig(tokenFile: string): ElectricityConfig {
-  return { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+  return { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null, vatPercent: 0 };
 }
 
 /** Like `fakeIec`, but the MONTHLY call also carries a real day-by-day breakdown, for pricing the month-to-date cost. */
@@ -240,7 +240,15 @@ test('retries persisting the flag on a later successful poll if an earlier write
   writeFileSync(brokenDataDir, 'x');
 
   const captured = captureLog();
-  const config: ElectricityConfig = { israeliId: VALID_ID, tokenFile, pollIntervalMs: 30, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 30,
+    tariffMode: 'flat',
+    pricePerKwh: null,
+    tariffScheduleFile: null,
+    vatPercent: 0,
+  };
   const collector = new ElectricityCollector(config, brokenDataDir, captured.log);
 
   await collector.start(); // fetches fine, but the state write fails

@@ -9,7 +9,26 @@ Each released version has a matching `vX.Y.Z` git tag; the release workflow uses
 the section below the matching heading as the GitHub release notes, so keep the
 headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
-## [Unreleased]
+## [0.6.4] - 2026-09-19
+
+### Added
+
+- `VAT_PERCENT` environment variable (default `18`, Israel's standard rate)
+  that grosses up every configured price — `WATER_PRICE_PER_CUBIC_METER`,
+  `WATER_TARIFF_EXCESS_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`,
+  and a tariff schedule file's `baseRatePerKwh` — before it reaches any cost
+  or rate metric, for both the live collectors and the backfill CLI. Added
+  after checking a real IEC-supplier electricity bill: its per-kWh line
+  items are explicitly labeled "לא כולל מע"מ" (not including VAT), with VAT
+  added once, separately, on the invoice total — so a rate pasted straight
+  off a bill's per-unit breakdown was being undercounted by ~18%, with no
+  way to correct for it. **This changes cost/rate output for anyone already
+  using `WATER_PRICE_PER_CUBIC_METER`, `ELECTRICITY_PRICE_PER_KWH`, or a
+  tariff schedule** — those prices are now grossed up by 18% by default.
+  Israeli water tariffs are conventionally published the other way around
+  (already VAT-inclusive), unlike electricity — see the updated worked
+  example under Cost estimation in the README. Set `VAT_PERCENT=0` to keep
+  the old, un-grossed behavior.
 
 ### Changed
 

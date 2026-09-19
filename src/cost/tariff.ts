@@ -24,6 +24,16 @@
  *   unit is guaranteed at least a 2-person allowance by law, regardless of
  *   registered headcount) is priced at `normalRatePerCubicMeter`, the rest
  *   at `excessRatePerCubicMeter`.
+ *
+ * Every configured rate is treated as pre-VAT and grossed up by
+ * `VAT_PERCENT` (18% by default) before the functions below ever see it —
+ * `config.ts` does this for `WaterTariffTiers` and the flat
+ * `ElectricityPricingConfig.pricePerKwh`, and `loadTariffSchedule`'s
+ * `vatPercent` argument does it for `TariffSchedule.baseRatePerKwh` — so
+ * every rate and cost this module computes, and every gauge built from
+ * them, is already VAT-inclusive. This matches how Israeli utility bills
+ * are actually laid out: the per-unit rate is quoted before VAT, with VAT
+ * added once, separately, on the invoice total.
  */
 import { readFileSync } from 'node:fs';
 
@@ -47,7 +57,15 @@ export interface TariffSchedule {
 
 export class TariffScheduleError extends Error {}
 
-export function loadTariffSchedule(path: string): TariffSchedule {
+/**
+ * `vatPercent` grosses up the file's `baseRatePerKwh` the same way
+ * `config.ts` grosses up `ELECTRICITY_PRICE_PER_KWH` — the schedule file is
+ * meant to hold the pre-VAT rate straight off a bill's per-window
+ * breakdown, matching how Israeli utility bills quote it (see
+ * `grossUpForVat` in `config.ts`). Defaults to 0 (no change) so callers that
+ * don't care about VAT — tests, mainly — don't need to pass it.
+ */
+export function loadTariffSchedule(path: string, vatPercent = 0): TariffSchedule {
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
@@ -60,7 +78,8 @@ export function loadTariffSchedule(path: string): TariffSchedule {
   } catch (error) {
     throw new TariffScheduleError(`Tariff schedule at ${path} is not valid JSON: ${describe(error)}`);
   }
-  return validateSchedule(parsed, path);
+  const schedule = validateSchedule(parsed, path);
+  return { ...schedule, baseRatePerKwh: schedule.baseRatePerKwh * (1 + vatPercent / 100) };
 }
 
 function validateSchedule(value: unknown, path: string): TariffSchedule {
