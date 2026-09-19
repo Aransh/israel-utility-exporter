@@ -11,6 +11,30 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-19
+
+### Fixed
+
+- `backfill-cli.js`'s meter-reading reconstruction (`--estimated-readings`)
+  never wrote a point at today's date on an account whose portal publishes
+  its per-day consumption breakdown with a multi-day lag — confirmed against
+  a real account where RymPro's breakdown lagged 3 days behind "now".
+  `reconstructMeterReadings`/`reconstructElectricityMeterReading` anchor the
+  backward walk on the newest day with *published daily consumption*, by
+  design (see their own doc comments) — reasonable for every day before
+  that, but it meant the live reading already fetched for that anchor
+  (`meter.read` for water, `totalImport` for electricity, both always
+  "now", never historical) was being *dated* several days stale instead of
+  written at today's date where it belongs. Since the "Water/Electricity
+  Meter Reading" panels are pinned to `timeFrom: 2d`, a lag past 2 days
+  meant backfill could never put a single sample inside that window, no
+  matter how densely the rest of history was written — the sparkline
+  stayed empty until the live exporter's own scrapes eventually caught up,
+  which could take days depending on the account. Fixed by writing that
+  already-fetched live value at today's date too (in addition to, not
+  instead of, the backward-reconstructed history), densified the same way
+  as everything else in `sparklineTimestamps`'s tail window.
+
 ## [0.6.1] - 2026-09-19
 
 ### Added

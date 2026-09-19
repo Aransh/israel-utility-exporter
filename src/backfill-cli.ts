@@ -359,9 +359,22 @@ export async function collectWater(
 
       const currentTotal = typeof meter.read === 'number' && Number.isFinite(meter.read) ? meter.read : null;
       const readings = reconstructMeterReadings(currentTotal, dailyConsumption, from, to, today, log, String(meter.meterCount));
-      for (const reading of readings) {
-        for (const timestampMs of sparklineTimestamps(reading.date)) {
-          points.push({ metric: 'israel_utility_water_meter_reading_cubic_meters', labels, timestampMs, value: reading.value });
+      const readingByDate = new Map(readings.map((reading) => [reading.date, reading.value]));
+      // `currentTotal` is the live reading as of right now, not a lagged
+      // estimate — `reconstructMeterReadings` anchors on the newest day with
+      // *published daily consumption*, which is usually a few days behind
+      // today (see its own doc comment), so without this, backfill would
+      // never write a same-day point even though the accurate one is
+      // already in hand. This is what lets the meter-reading sparkline
+      // (pinned to the last 2 days) show something right after a fresh
+      // backfill, instead of only once the live exporter's own scrapes
+      // catch up.
+      if (currentTotal !== null && today >= from && today <= to) {
+        readingByDate.set(today, currentTotal);
+      }
+      for (const [date, value] of readingByDate) {
+        for (const timestampMs of sparklineTimestamps(date)) {
+          points.push({ metric: 'israel_utility_water_meter_reading_cubic_meters', labels, timestampMs, value });
         }
       }
     }
@@ -576,6 +589,7 @@ export async function collectElectricity(
   // with no separate DAILY calls needed.
   const dailyByDate = new Map<string, number>();
   const points: SamplePoint[] = [];
+  const today = isoDate(new Date());
   for (const monthStart of enumerateMonthStarts(from, to)) {
     log.info(`Electricity backfill: fetching ${monthStart.slice(0, 7)}...`);
     const monthly = await client.getConsumption(contract.contractId, ReadingResolution.MONTHLY, monthStart);
@@ -647,9 +661,26 @@ export async function collectElectricity(
         log,
         contract.contractId,
       );
-      for (const reading of readings) {
-        for (const timestampMs of sparklineTimestamps(reading.date)) {
-          points.push({ metric: 'israel_utility_electricity_meter_reading_kwh', labels, timestampMs, value: reading.value });
+      const readingByDate = new Map(readings.map((reading) => [reading.date, reading.value]));
+      // `monthly.totalImport` is IEC's live "now" reading (see
+      // `ConsumptionResult`'s doc comment) — always fresher than
+      // `periodEndReading`, which anchors on whatever day IEC's per-day
+      // breakdown last reached. Without this, backfill would never write a
+      // same-day point even when the accurate one is already in hand, and
+      // the meter-reading sparkline (pinned to the last 2 days) would stay
+      // empty until the live exporter's own scrapes caught up.
+      if (
+        typeof monthly.totalImport === 'number' &&
+        Number.isFinite(monthly.totalImport) &&
+        monthKey === today.slice(0, 7) &&
+        today >= from &&
+        today <= to
+      ) {
+        readingByDate.set(today, monthly.totalImport);
+      }
+      for (const [date, value] of readingByDate) {
+        for (const timestampMs of sparklineTimestamps(date)) {
+          points.push({ metric: 'israel_utility_electricity_meter_reading_kwh', labels, timestampMs, value });
         }
       }
     }
