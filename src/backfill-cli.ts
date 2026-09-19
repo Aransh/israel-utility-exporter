@@ -369,9 +369,16 @@ export function reconstructMeterReadings(
     return [];
   }
 
-  return walkBackwardFromAnchor(currentTotal, anchorDate, dailyConsumption, from, to, (message) =>
-    log.warn(`Water backfill: meter ${meterLabel}'s ${message}`),
+  return walkBackwardFromAnchor(currentTotal, anchorDate, dailyConsumption, from, to, (stopDate, reason) =>
+    log.warn(`Water backfill: meter ${meterLabel}'s ${describeStop(stopDate, reason)}`),
   );
+}
+
+/** Renders a `walkBackwardFromAnchor` stop as the tail of a "reading reconstruction ..." log line. */
+function describeStop(stopDate: string, reason: 'gap' | 'negative'): string {
+  return reason === 'gap'
+    ? `reading reconstruction stopped at ${stopDate} — no published consumption before that date.`
+    : `reading reconstruction would go negative before ${stopDate}; stopping there instead of writing a negative reading.`;
 }
 
 /**
@@ -404,9 +411,25 @@ export function reconstructElectricityMeterReading(
     return [];
   }
 
-  return walkBackwardFromAnchor(periodEndReading, periodEndReadingDate, dailyConsumption, from, to, (message) =>
-    log.warn(`Electricity backfill: contract ${contractId}'s ${message}`),
-  );
+  // Each month's `dailyConsumption` only ever holds that calendar month's own
+  // days (see `collectElectricity`), so walking backward from this month's
+  // anchor *always* runs out of data at the previous month's last day — that
+  // is the design (see this function's own doc comment), not a real gap, and
+  // logging it at the same level/wording as an actual missing day would cry
+  // wolf on every single backfill run. Only a stop anywhere else within the
+  // month is a genuine gap worth a WARN.
+  const monthStart = `${periodEndReadingDate.slice(0, 7)}-01`;
+  const expectedStop = shiftDays(monthStart, -1);
+  return walkBackwardFromAnchor(periodEndReading, periodEndReadingDate, dailyConsumption, from, to, (stopDate, reason) => {
+    if (reason === 'gap' && stopDate === expectedStop) {
+      log.debug(
+        `Electricity backfill: contract ${contractId}'s reading reconstruction for ${monthStart.slice(0, 7)} reached the 1st ` +
+          'of the month — expected, since each month reconstructs independently from its own dated reading.',
+      );
+      return;
+    }
+    log.warn(`Electricity backfill: contract ${contractId}'s ${describeStop(stopDate, reason)}`);
+  });
 }
 
 /**
@@ -423,7 +446,7 @@ function walkBackwardFromAnchor(
   dailyConsumption: Map<string, number>,
   from: string,
   to: string,
-  warn: (message: string) => void,
+  onStop: (stopDate: string, reason: 'gap' | 'negative') => void,
 ): Array<{ date: string; value: number }> {
   // The anchor can be well after `to` (water's anchor is always today's live
   // reading, regardless of how far in the past the requested range is), so
@@ -439,12 +462,12 @@ function walkBackwardFromAnchor(
     }
     const consumption = dailyConsumption.get(cursor);
     if (consumption === undefined) {
-      warn(`reading reconstruction stopped at ${cursor} — no published consumption before that date.`);
+      onStop(cursor, 'gap');
       break;
     }
     const next = runningTotal - consumption;
     if (next < 0) {
-      warn(`reading reconstruction would go negative before ${cursor}; stopping there instead of writing a negative reading.`);
+      onStop(cursor, 'negative');
       break;
     }
     runningTotal = next;
@@ -546,13 +569,27 @@ export async function collectElectricity(
     // but only days within [from, to] are actually written.
     monthDays.sort((a, b) => a.date.localeCompare(b.date));
     let cumulative = 0;
+    let cumulativeCost = 0;
     for (const { date, consumption } of monthDays) {
       cumulative += consumption;
+      // Each day priced at its own rate and summed, mirroring the live
+      // collector's `israel_utility_electricity_cost_estimate_monthly_ils`
+      // (see `electricityMonthlyCostEstimate`) — unlike water's tiered
+      // pricing, electricity's rate can vary day to day (schedule mode), so
+      // this can't be derived from `cumulative` alone the way
+      // `collectWater`'s cost figure is from its own running total.
+      const rate = electricityEffectiveRate(config, tariffSchedule, parseYmdNoon(date));
+      if (rate !== null) {
+        cumulativeCost += consumption * rate;
+      }
       if (date < from || date > to) {
         continue;
       }
       const timestampMs = dateToEpochSeconds(date) * 1000;
       points.push({ metric: 'israel_utility_electricity_consumption_monthly_kwh', labels, timestampMs, value: cumulative });
+      if (rate !== null) {
+        points.push({ metric: 'israel_utility_electricity_cost_estimate_monthly_ils', labels, timestampMs, value: cumulativeCost });
+      }
     }
 
     if (options.includeMeterReading) {
@@ -612,13 +649,13 @@ export function chunk<T>(items: T[], size: number): T[][] {
 export function buildEstimatedReadingsPrompt(runWater: boolean, runElectricity: boolean): string {
   const metrics: string[] = [];
   if (runWater) {
-    metrics.push('the cumulative water meter reading (israel_utility_water_meter_reading_cubic_meters)');
+    metrics.push('the estimated cumulative water meter reading (israel_utility_water_meter_reading_cubic_meters)');
   }
   if (runElectricity) {
-    metrics.push('the cumulative electricity meter reading (israel_utility_electricity_meter_reading_kwh)');
+    metrics.push('the estimated cumulative electricity meter reading (israel_utility_electricity_meter_reading_kwh)');
   }
   return (
-    `Also backfill estimated ${metrics.join(' and ')}, reconstructed from daily usage rather than ` +
+    `Also backfill ${metrics.join(' and ')}, reconstructed from daily usage rather than ` +
     "reported directly by the utility? This is not 100% reliable — skip it if you've recently moved, " +
     'or replaced or reset a meter. [y/N] '
   );

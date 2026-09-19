@@ -32,7 +32,7 @@
       "gridPos": { "x": 0, "y": 1, "w": 18, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_meter_reading_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "m3", "decimals": 3 }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "m3", "decimals": 3, "custom": { "spanNulls": true } }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
@@ -172,7 +172,7 @@
       "gridPos": { "x": 0, "y": 21, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_water_meter_reading_cubic_meters", "legendFormat": "Meter {{meter_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "m3" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "m3", "custom": { "spanNulls": true } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     },
 
@@ -186,7 +186,7 @@
       "gridPos": { "x": 0, "y": 30, "w": 18, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_meter_reading_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "kwatth", "decimals": 1 }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "kwatth", "decimals": 1, "custom": { "spanNulls": true } }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "auto",
@@ -225,11 +225,11 @@
     {
       "id": 23,
       "type": "stat",
-      "title": "Electricity Cost Estimate (Newest Day)",
-      "description": "Only populated when ELECTRICITY_PRICE_PER_KWH or a tariff schedule is configured. In schedule mode this is a duration-weighted estimate, not a bill reconstruction — see README. The background trend is this figure over the dashboard's time range, so a day-to-day cost swing is visible instead of only the latest number.",
+      "title": "Electricity Cost (Month to Date)",
+      "description": "Each published day this month priced at its own rate and summed. Only populated when ELECTRICITY_PRICE_PER_KWH or a tariff schedule is configured. In schedule mode this is a duration-weighted estimate, not a bill reconstruction — see README. The background trend is this figure over the dashboard's time range — it resets each calendar month, so a sawtooth is expected, not a bug.",
       "gridPos": { "x": 0, "y": 36, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "israel_utility_electricity_cost_estimate_ils", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
+      "targets": [{ "expr": "israel_utility_electricity_cost_estimate_monthly_ils", "legendFormat": "Month to date (contract {{contract_id}})", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "currencyILS", "decimals": 2, "noValue": "not configured" }, "overrides": [] },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
@@ -287,7 +287,7 @@
       "gridPos": { "x": 0, "y": 50, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "expr": "israel_utility_electricity_meter_reading_kwh", "legendFormat": "Contract {{contract_id}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "kwatth" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "kwatth", "custom": { "spanNulls": true } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     }
   ]

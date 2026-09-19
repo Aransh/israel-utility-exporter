@@ -295,6 +295,7 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_electricity_consumption_monthly_kwh` | Month-to-date consumption. |
 | `israel_utility_electricity_effective_rate_ils_per_kwh` | Today's blended rate — schedule tariff mode only. |
 | `israel_utility_electricity_cost_estimate_ils` | Estimated cost of the newest published day, if priced. |
+| `israel_utility_electricity_cost_estimate_monthly_ils` | Month-to-date cost, if priced — each published day priced at its own rate and summed. |
 | `israel_utility_electricity_token_expires_timestamp_seconds` | When the current session token expires. |
 | `israel_utility_electricity_contract_info` | Always 1; carries `contract_number`/`address` for dashboard joins. |
 | `israel_utility_electricity_scrape_success` / `..._last_success_timestamp_seconds` / `..._consecutive_failures` | Collector health. |
@@ -410,6 +411,7 @@ non-interactive/cron context — without one, it defaults to skipping them).
   `israel_utility_water_effective_rate_ils_per_cubic_meter`,
   `israel_utility_water_tariff_normal_rate_ils_per_cubic_meter`,
   `israel_utility_electricity_cost_estimate_ils`,
+  `israel_utility_electricity_cost_estimate_monthly_ils`,
   `israel_utility_electricity_effective_rate_ils_per_kwh`). Those are priced
   with **today's tariff config**, the same way the live collectors always
   price the current month/day — there's no record of what a historical day's

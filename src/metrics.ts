@@ -163,6 +163,12 @@ export const electricityGauges = {
     labelNames: ELECTRICITY_LABELS,
     registers: [registry],
   }),
+  costEstimateMonthlyIls: new Gauge({
+    name: 'israel_utility_electricity_cost_estimate_monthly_ils',
+    help: 'Estimated cost of this month-to-date consumption, ILS, each published day priced at its own rate and summed. Only present when a price or tariff schedule is configured.',
+    labelNames: ELECTRICITY_LABELS,
+    registers: [registry],
+  }),
   tokenExpiresTimestampSeconds: new Gauge({
     name: 'israel_utility_electricity_token_expires_timestamp_seconds',
     help: 'Unix time the current IEC session token expires. Falls back to re-login being needed once the refresh token itself lapses.',

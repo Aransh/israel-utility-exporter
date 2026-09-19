@@ -11,6 +11,35 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
 ## [Unreleased]
 
+### Added
+
+- `israel_utility_electricity_cost_estimate_monthly_ils`: month-to-date
+  electricity cost, each published day priced at its own rate and summed —
+  unlike water's tiered cost, electricity's rate can vary day to day
+  (schedule mode), so this can't be derived from the month's total kWh
+  alone. Also backfilled by `backfill-cli.js`. The "Electricity Cost
+  Estimate (Newest Day)" dashboard panel now shows this month-to-date figure
+  instead, matching the "Water Cost" panel's treatment.
+
+### Fixed
+
+- `backfill-cli.js`'s interactive confirmation prompt read as broken English
+  ("Also backfill estimated the cumulative water meter reading...") — it was
+  missing an article before "estimated".
+- `backfill-cli.js`'s electricity meter-reading reconstruction logged a WARN
+  at every single month boundary it crossed ("no published consumption
+  before that date"), even though stopping there is the intended behavior —
+  each month reconstructs independently from its own dated reading (see
+  `reconstructElectricityMeterReading`), so it always runs out of same-month
+  data at the previous month's last day. That expected case now logs at
+  debug level with wording that says so; a stop anywhere else in the month
+  (a genuine gap) still logs a WARN.
+- The dashboard's cumulative meter-reading panels (water and electricity)
+  and their stat-panel sparklines rendered as disconnected dots instead of a
+  connected line/area, because the gap between two real samples is often
+  wider than Grafana's default null-gap heuristic tolerates for that field.
+  Both now set `spanNulls: true`.
+
 ## [0.6.0] - 2026-09-19
 
 ### Added

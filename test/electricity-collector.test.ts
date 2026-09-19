@@ -7,7 +7,10 @@ import { test } from 'node:test';
 
 import type { ElectricityConfig } from '../src/config.js';
 import { ElectricityCollector } from '../src/electricity/collector.js';
+import { ReadingResolution } from '../src/electricity/iec-client.js';
 import type { Logger } from '../src/logger.js';
+import { registry } from '../src/metrics.js';
+import { dateToEpochSeconds } from '../src/time/day.js';
 
 const VALID_ID = '000000000';
 const CONTRACT_ID = '900123456';
@@ -60,6 +63,44 @@ function makeConfig(tokenFile: string): ElectricityConfig {
   return { israeliId: VALID_ID, tokenFile, pollIntervalMs: 3_600_000, tariffMode: 'flat', pricePerKwh: null, tariffScheduleFile: null };
 }
 
+/** Like `fakeIec`, but the MONTHLY call also carries a real day-by-day breakdown, for pricing the month-to-date cost. */
+function fakeIecWithMonthlyBreakdown(dailyByLocalDate: Record<string, number>) {
+  return async (url: string, init: RequestInit = {}): Promise<Response> => {
+    const u = new URL(url);
+    if (u.hostname !== 'iecapi.iec.co.il') {
+      return new Response('', { status: 404 });
+    }
+    if (u.pathname === '/api/customer') {
+      return json({ bpNumber: 'BP1' });
+    }
+    if (u.pathname === '/api/customer/contract/BP1') {
+      return json({ contracts: [{ contractId: CONTRACT_ID }] });
+    }
+    if (u.pathname === `/api/Device/${CONTRACT_ID}`) {
+      return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
+    }
+    if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
+      const body = JSON.parse(init.body as string) as { resolution: number };
+      const total = Object.values(dailyByLocalDate).reduce((sum, v) => sum + v, 0);
+      if (body.resolution !== ReadingResolution.MONTHLY) {
+        return json({ meterList: [{ periodConsumptions: [{ interval: '2026-08-19T00:00:00+00:00', consumption: 5 }] }] });
+      }
+      return json({
+        meterList: [
+          {
+            totalConsumptionForPeriod: total,
+            periodConsumptions: Object.entries(dailyByLocalDate).map(([localDate, consumption]) => ({
+              interval: new Date(dateToEpochSeconds(localDate) * 1000).toISOString(),
+              consumption,
+            })),
+          },
+        ],
+      });
+    }
+    return new Response('', { status: 404 });
+  };
+}
+
 test('logs the backfill hint on a genuine first run, and not again once data has been recorded', async () => {
   globalThis.fetch = fakeIec() as typeof fetch;
 
@@ -104,6 +145,25 @@ test('keeps showing the hint across restarts if no poll has ever succeeded', asy
   await collectorB.start();
   collectorB.stop();
   assert.ok(second.lines.some((line) => line.includes('First run detected')), 'must still show the hint since no poll has ever succeeded');
+});
+
+test('flat tariff mode sets the month-to-date cost gauge from each published day, not just the newest one', async () => {
+  globalThis.fetch = fakeIecWithMonthlyBreakdown({ '2026-01-01': 1, '2026-01-02': 2, '2026-01-03': 3 }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'electricity-collector-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = { ...makeConfig(tokenFile), pricePerKwh: 2 };
+  const collector = new ElectricityCollector(config, dataDir, captureLog().log);
+  await collector.start();
+  collector.stop();
+
+  // (1 + 2 + 3) kWh across the month, each day @ 2 ILS/kWh = 12.
+  const body = await registry.metrics();
+  assert.match(body, new RegExp(`israel_utility_electricity_cost_estimate_monthly_ils\\{contract_id="${CONTRACT_ID}"\\} 12`));
 });
 
 test('retries persisting the flag on a later successful poll if an earlier write failed', async () => {

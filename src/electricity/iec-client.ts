@@ -511,6 +511,17 @@ export class IecClient {
       .filter((p) => Number.isFinite(p.consumption))
       .sort((a, b) => b.interval.localeCompare(a.interval))[0];
 
+    // MONTHLY already returns one period per calendar day within the month
+    // (confirmed in the backfill CLI against a same-day DAILY call's
+    // totalForPeriod) — reused here, at no extra API cost, to price the
+    // month-to-date cost day by day rather than only by today's rate.
+    const monthlyDailyConsumption = monthly.periods
+      .map((p) => {
+        const parsed = new Date(p.interval);
+        return Number.isFinite(parsed.getTime()) ? { date: isoDate(parsed), consumption: p.consumption } : null;
+      })
+      .filter((p): p is { date: string; consumption: number } => p !== null);
+
     return {
       contractId: contract.contractId,
       contractNumber: contract.contractNumber,
@@ -519,6 +530,7 @@ export class IecClient {
       daily: newestDaily?.consumption ?? null,
       dailyDate: newestDaily ? newestDaily.interval.slice(0, 10) : null,
       monthly: monthly.totalForPeriod,
+      monthlyDailyConsumption,
       tokenExpiresAt: this.tokenExpiresAt(),
     };
   }
@@ -536,6 +548,8 @@ export interface ElectricitySnapshot {
   dailyDate: string | null;
   /** Consumption so far this calendar month, kWh. */
   monthly: number | null;
+  /** One entry per calendar day within the current month IEC has published consumption for, used to price month-to-date cost day by day. */
+  monthlyDailyConsumption: Array<{ date: string; consumption: number }>;
   /** Epoch seconds the current id_token expires at, for the token-expiry alert. */
   tokenExpiresAt: number | null;
 }

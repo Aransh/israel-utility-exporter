@@ -818,6 +818,16 @@ test('collectElectricity in flat mode backfills the cost gauge from a fixed pric
       [dateToEpochSeconds('2026-01-03') * 1000, 6],
     ]),
   );
+
+  const monthlyCostPoints = points.filter((p) => p.metric === 'israel_utility_electricity_cost_estimate_monthly_ils');
+  assert.deepEqual(
+    new Map(monthlyCostPoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds('2026-01-01') * 1000, 2],
+      [dateToEpochSeconds('2026-01-02') * 1000, 6],
+      [dateToEpochSeconds('2026-01-03') * 1000, 12],
+    ]),
+  );
 });
 
 test('collectElectricity in schedule mode backfills the effective-rate and cost gauges via blendedRateForDay', async () => {
@@ -863,6 +873,15 @@ test('collectElectricity in schedule mode backfills the effective-rate and cost 
     new Map([
       [dateToEpochSeconds('2026-01-01') * 1000, 1 * expectedRate('2026-01-01')],
       [dateToEpochSeconds('2026-01-02') * 1000, 2 * expectedRate('2026-01-02')],
+    ]),
+  );
+
+  const monthlyCostPoints = points.filter((p) => p.metric === 'israel_utility_electricity_cost_estimate_monthly_ils');
+  assert.deepEqual(
+    new Map(monthlyCostPoints.map((p) => [p.timestampMs, p.value])),
+    new Map([
+      [dateToEpochSeconds('2026-01-01') * 1000, 1 * expectedRate('2026-01-01')],
+      [dateToEpochSeconds('2026-01-02') * 1000, 1 * expectedRate('2026-01-01') + 2 * expectedRate('2026-01-02')],
     ]),
   );
 });

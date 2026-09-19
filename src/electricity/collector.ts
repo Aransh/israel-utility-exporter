@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { electricityEffectiveRate, loadTariffSchedule, type TariffSchedule } from '../cost/tariff.js';
+import { electricityEffectiveRate, electricityMonthlyCostEstimate, loadTariffSchedule, type TariffSchedule } from '../cost/tariff.js';
 import type { ElectricityConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import { electricityGauges } from '../metrics.js';
@@ -148,6 +148,15 @@ export class ElectricityCollector {
     }
     if (snapshot.monthly !== null) {
       electricityGauges.consumptionMonthlyKwh.set(labels, snapshot.monthly);
+    }
+
+    const monthlyCost = electricityMonthlyCostEstimate(
+      this.config,
+      this.tariffSchedule,
+      snapshot.monthlyDailyConsumption.map((day) => ({ date: parseYmdNoon(day.date), consumption: day.consumption })),
+    );
+    if (monthlyCost !== null) {
+      electricityGauges.costEstimateMonthlyIls.set(labels, monthlyCost);
     }
 
     if (snapshot.daily === null || !snapshot.dailyDate) {
