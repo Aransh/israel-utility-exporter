@@ -93,6 +93,15 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   portal/IEC API calls that can each take a couple of seconds, but at the
   default `LOG_LEVEL=info` a slow-but-working run and a genuinely hung one
   previously looked identical from the terminal.
+- Every dashboard panel showing a cost or rate figure now says so in its
+  title, not just its description: "Water Cost" → "Water Cost Estimate",
+  "Water Rate vs Normal (Tiered Mode)" → "Estimated Water Rate vs Normal
+  (Tiered Mode)", "Electricity Cost (Month to Date)" → "Electricity Cost
+  Estimate (Month to Date)", "Effective Rate (Today, Schedule Mode)" →
+  "Estimated Effective Rate (Today, Schedule Mode)". These are all priced
+  with today's tariff config against Prometheus-reported consumption, not a
+  figure the utility itself has billed — that caveat shouldn't require
+  opening the panel's description to see.
 
 ### Fixed
 
