@@ -9,6 +9,34 @@ Each released version has a matching `vX.Y.Z` git tag; the release workflow uses
 the section below the matching heading as the GitHub release notes, so keep the
 headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
+## [Unreleased]
+
+### Fixed
+
+- The "current value" stat panels (Meter Reading, Rate vs Normal, Cost
+  Estimate, Effective Rate) went blank whenever the dashboard was browsed
+  to a fully historical range not reaching "now" (e.g. picking a past
+  calendar month) — reported right after backfilling 60 days and browsing
+  to August. Root cause: 0.6.5 switched these to `instant: true` queries to
+  fix a different, narrower problem (a live-only field showing "no data"
+  right after a reset), but an instant query only ever looks *up to ~5
+  minutes* before the range's own `to` — so it could never find backfill's
+  once-daily samples for any `to` that wasn't within 5 minutes of an actual
+  sample. Confirmed directly against Prometheus: an instant query at Aug 31
+  returned nothing, while a plain range query over the same window found
+  all 31 days fine.
+
+  Reverted to range queries, but the *original* 0.6.5 problem is real too —
+  confirmed separately that even a plain range query can return completely
+  empty over daily-only data if the panel's computed step happens to land
+  out of phase with the data's own timestamps (e.g. a 2-hour step missing
+  samples a 1-hour step found, for the exact same range). Fixed properly
+  this time by wrapping each expression in `last_over_time(...[3d])` —
+  the standard PromQL idiom for "the most recent value, looked back up to
+  3 days" — which is immune to step/phase alignment entirely, unlike
+  either plain range or instant queries. Verified both the historical
+  August case and the default live 30-day view now work correctly.
+
 ## [0.6.5] - 2026-09-19
 
 ### Fixed
