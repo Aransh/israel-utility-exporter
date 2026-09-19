@@ -305,7 +305,7 @@ Plus `israel_utility_exporter_build_info{version="..."}`.
 
 ![Water pricing row: cost estimate with a month-to-date sparkline, and the effective rate as a percentage of the normal rate, turning orange once the excess tier kicks in](docs/dashboard-water-pricing.png)
 
-![Electricity row: meter reading, collector health, cost estimate, and the schedule-mode effective rate, both with the same sparkline treatment as water](docs/dashboard-electricity.png)
+![Electricity row: meter reading, collector health, cost estimate and effective rate (both with the same sparkline treatment as water), daily/monthly consumption, and the cumulative meter reading trend](docs/dashboard-electricity.png)
 
 - `grafana/provisioning/dashboards/files/dashboard.json` — auto-provisioned by
   `docker-compose.yml`, or import it manually into your own Grafana. Two
