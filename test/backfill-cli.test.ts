@@ -16,7 +16,7 @@ import {
   resolveRange,
 } from '../src/backfill-cli.js';
 import type { ElectricityConfig, WaterConfig } from '../src/config.js';
-import { blendedRateForDay, TariffScheduleError, tieredWaterCost, waterTariffThreshold } from '../src/cost/tariff.js';
+import { blendedRateForDay, TariffScheduleError, tieredWaterCost, waterCostEstimate, waterTariffThreshold } from '../src/cost/tariff.js';
 import { ReadingResolution } from '../src/electricity/iec-client.js';
 import type { Logger } from '../src/logger.js';
 import { dateToEpochSeconds, isoDate, parseYmdNoon, shiftDays } from '../src/time/day.js';
@@ -943,6 +943,30 @@ test('collectWater backfills no cost gauge at all when unpriced', async () => {
   assert.equal(points.filter((p) => p.metric === 'israel_utility_water_cost_estimate_ils').length, 0);
 });
 
+test('collectWater backfills the previous-month cost gauge from the extra month it fetches but does not otherwise expose', async () => {
+  globalThis.fetch = fakeWaterPortal() as typeof fetch;
+
+  const config: WaterConfig = {
+    email: 'a@example.com',
+    password: 'x',
+    pollIntervalMs: 60_000,
+    weeklyWindow: 'sunday',
+    tariffMode: 'flat',
+    pricePerCubicMeter: 3,
+    tariffTiers: null,
+  };
+  const points = await collectWater(config, '2026-01-01', '2026-01-03', SILENT_LOG);
+
+  // fakeWaterPortal reports 1 m3/day for whatever range is requested, and
+  // `collectWater` now fetches starting a month before `from` specifically so
+  // December's total is available — all 31 days of it, since `from` here is
+  // the 1st, so no leading days are cut off by the requested range.
+  const previousMonthPoints = points.filter((p) => p.metric === 'israel_utility_water_cost_estimate_previous_month_ils');
+  assert.equal(previousMonthPoints.length, 3, 'one per requested day (2026-01-01 through 2026-01-03)');
+  assert.ok(previousMonthPoints.every((p) => p.value === waterCostEstimate(config, 31)));
+  assert.ok(previousMonthPoints.every((p) => p.labels.month === 'Dec'));
+});
+
 test('collectElectricity in flat mode backfills the cost gauge from a fixed price per kWh, without an effective-rate gauge', async () => {
   globalThis.fetch = fakeIecMonthlyWithDailyBreakdown({ '2026-01-01': 1, '2026-01-02': 2, '2026-01-03': 3 }, 6) as typeof fetch;
 
@@ -1042,6 +1066,91 @@ test('collectElectricity in schedule mode backfills the effective-rate and cost 
       [dateToEpochSeconds('2026-01-02') * 1000, 1 * expectedRate('2026-01-01') + 2 * expectedRate('2026-01-02')],
     ]),
   );
+});
+
+/**
+ * Unlike `fakeIecMonthlyWithDailyBreakdown`, this branches on the requested
+ * month (`fromDate`'s YYYY-MM) instead of returning the same daily data for
+ * every MONTHLY call — needed to exercise the previous-month backfill, which
+ * depends on different months genuinely holding different data.
+ */
+function fakeIecMonthlyByMonth(byMonthKey: Record<string, { daily: Record<string, number>; monthTotal: number }>) {
+  return async (url: string, init: RequestInit = {}): Promise<Response> => {
+    const u = new URL(url);
+    if (u.hostname !== 'iecapi.iec.co.il') {
+      return new Response('', { status: 404 });
+    }
+    if (u.pathname === '/api/customer') {
+      return json({ bpNumber: 'BP1' });
+    }
+    if (u.pathname === '/api/customer/contract/BP1') {
+      return json({ contracts: [{ contractId: CONTRACT_ID }] });
+    }
+    if (u.pathname === `/api/Device/${CONTRACT_ID}`) {
+      return json([{ deviceNumber: METER_SERIAL, deviceCode: METER_CODE }]);
+    }
+    if (u.pathname === `/api/Consumption/RemoteReadingRange/${CONTRACT_ID}`) {
+      const body = JSON.parse(init.body as string) as { resolution: number; fromDate: string };
+      if (body.resolution !== ReadingResolution.MONTHLY) {
+        return json({ meterList: [{ totalConsumptionForPeriod: 0 }] });
+      }
+      const month = byMonthKey[body.fromDate.slice(0, 7)];
+      return json({
+        meterList: [
+          {
+            totalConsumptionForPeriod: month?.monthTotal ?? 0,
+            periodConsumptions: Object.entries(month?.daily ?? {}).map(([localDate, consumption]) => ({
+              interval: new Date(dateToEpochSeconds(localDate) * 1000).toISOString(),
+              consumption,
+            })),
+          },
+        ],
+      });
+    }
+    return new Response('', { status: 404 });
+  };
+}
+
+test('collectElectricity backfills the previous-month cost gauge, bootstrapping the first requested month and rolling forward after that', async () => {
+  globalThis.fetch = fakeIecMonthlyByMonth({
+    '2025-12': { daily: { '2025-12-01': 1, '2025-12-02': 1 }, monthTotal: 2 },
+    '2026-01': { daily: { '2026-01-01': 2, '2026-01-02': 2 }, monthTotal: 4 },
+    '2026-02': { daily: { '2026-02-01': 3 }, monthTotal: 3 },
+  }) as typeof fetch;
+
+  const dataDir = mkdtempSync(join(tmpdir(), 'backfill-electricity-'));
+  const tokenFile = join(dataDir, 'iec-token.json');
+  writeFileSync(
+    tokenFile,
+    JSON.stringify({ access_token: 'a', refresh_token: 'r', token_type: 'Bearer', expires_in: 3600, scope: 'openid', id_token: fakeIdToken(3600) }),
+  );
+  const config: ElectricityConfig = {
+    israeliId: VALID_ID,
+    tokenFile,
+    pollIntervalMs: 3_600_000,
+    tariffMode: 'flat',
+    pricePerKwh: 2,
+    tariffScheduleFile: null,
+    vatPercent: 0,
+  };
+
+  const points = await collectElectricity(config, '2026-01-01', '2026-02-01', SILENT_LOG);
+
+  const previousMonthPoints = points.filter((p) => p.metric === 'israel_utility_electricity_cost_estimate_previous_month_ils');
+
+  // January's days: "previous month" is December, only reachable via the
+  // bootstrap fetch (December isn't otherwise requested at all).
+  const januaryPoints = previousMonthPoints.filter((p) => p.timestampMs < dateToEpochSeconds('2026-02-01') * 1000);
+  assert.equal(januaryPoints.length, 2);
+  assert.ok(januaryPoints.every((p) => p.value === 2 * 2), 'December: 1+1 kWh at 2 ILS/kWh');
+  assert.ok(januaryPoints.every((p) => p.labels.month === 'Dec'));
+
+  // February's day: "previous month" is January, available by rolling
+  // forward January's own already-fetched data, not a second fetch of it.
+  const februaryPoints = previousMonthPoints.filter((p) => p.timestampMs >= dateToEpochSeconds('2026-02-01') * 1000);
+  assert.equal(februaryPoints.length, 1);
+  assert.ok(februaryPoints.every((p) => p.value === 4 * 2), 'January: 2+2 kWh at 2 ILS/kWh');
+  assert.ok(februaryPoints.every((p) => p.labels.month === 'Jan'));
 });
 
 test('collectElectricity grosses up the schedule\'s baseRatePerKwh by vatPercent, same as the live collector', async () => {

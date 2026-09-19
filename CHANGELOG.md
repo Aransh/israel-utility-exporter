@@ -23,6 +23,17 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
   "Month to date" gets the same treatment, but derived from the dashboard's
   own selected range (`${__to:date:MMM}`) rather than a metric label, since
   it isn't tied to a specific series the way "last month" is.
+- `israel_utility_water_cost_estimate_previous_month_ils` and
+  `israel_utility_electricity_cost_estimate_previous_month_ils` are now
+  backfilled, not just written by the live collector. Both reuse data the
+  backfill CLI already fetches one calendar month back from wherever it
+  starts: for water, that's within the single combined range it always
+  requests, so no extra fetch at all; for electricity, one extra
+  `RemoteReadingRange` call bootstraps the month just before the requested
+  range, and every month after that rolls forward from the previous loop
+  iteration's own already-fetched data instead of re-fetching it. A
+  requested month whose predecessor has no data at all (e.g. the account
+  didn't exist yet) is left unset rather than shown as a misleading ₪0.
 
 ### Changed
 

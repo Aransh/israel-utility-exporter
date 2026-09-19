@@ -52,16 +52,17 @@ import { type AppConfig, type ElectricityConfig, loadConfig, type WaterConfig } 
 import {
   effectiveWaterRate,
   electricityEffectiveRate,
+  electricityMonthlyCostEstimate,
   loadTariffSchedule,
   type TariffSchedule,
   waterCostEstimate,
   waterTariffThreshold,
 } from './cost/tariff.js';
-import { IecClient, ReadingResolution } from './electricity/iec-client.js';
+import { IecClient, type PeriodConsumption, ReadingResolution } from './electricity/iec-client.js';
 import { createLogger, type Logger } from './logger.js';
 import { remoteWrite, type RemoteWriteSettings } from './remote-write/client.js';
 import { buildTimeSeries, type SamplePoint } from './remote-write/series-builder.js';
-import { dateToEpochSeconds, enumerateMonthStarts, isoDate, parseYmdNoon, shiftDays } from './time/day.js';
+import { dateToEpochSeconds, enumerateMonthStarts, isoDate, monthAbbreviation, parseYmdNoon, shiftDays } from './time/day.js';
 import { enumerateWeekStarts, RymProClient, sumWeek } from './water/rympro-client.js';
 
 const CHUNK_SIZE = 500;
@@ -239,11 +240,15 @@ export async function collectWater(
   await client.login();
   const meters = await client.listMeters();
 
-  // Fetched from the start of the calendar month containing `from`, not
-  // `from` itself, so a month's running total (below) is correct even when
-  // `from` starts mid-month — days before `from` still contribute to that
-  // month's cumulative, they just aren't written as their own daily points.
-  const fetchFrom = enumerateMonthStarts(from, to)[0] ?? from;
+  // Fetched from the start of the calendar month *before* the one
+  // containing `from`, not `from` itself: one month back covers that
+  // month's own running total (below) correctly even when `from` starts
+  // mid-month, and the extra month before that makes every requested
+  // month's own "previous month" cost comparison available too — not just
+  // months after the first one requested. Days before `from` still
+  // contribute to totals, they just aren't written as their own points.
+  const requestedFirstMonthStart = enumerateMonthStarts(from, to)[0] ?? from;
+  const fetchFrom = `${shiftDays(requestedFirstMonthStart, -1).slice(0, 7)}-01`;
 
   // Depends only on `config`, never on the date or a day's cumulative
   // consumption, so it's computed once up front rather than on every
@@ -304,6 +309,22 @@ export async function collectWater(
     for (const monthStart of enumerateMonthStarts(from, to)) {
       const monthKey = monthStart.slice(0, 7);
       const monthDays = daily.filter((day) => day.date.slice(0, 7) === monthKey).sort((a, b) => a.date.localeCompare(b.date));
+
+      // The extra month `fetchFrom` reaches back to (see its own comment)
+      // makes this available for every requested month, not just ones after
+      // the first — a day count of 0 means genuinely no data that far back
+      // (e.g. the account didn't exist yet), not worth showing as "₪0".
+      const previousMonthKey = shiftDays(monthStart, -1).slice(0, 7);
+      const previousMonthDays = daily.filter((day) => day.date.slice(0, 7) === previousMonthKey);
+      const previousMonthCost =
+        previousMonthDays.length > 0
+          ? waterCostEstimate(
+              config,
+              previousMonthDays.reduce((sum, day) => sum + day.value, 0),
+            )
+          : null;
+      const previousMonthLabel = monthAbbreviation(`${previousMonthKey}-01`);
+
       let cumulative = 0;
       for (const day of monthDays) {
         cumulative += day.value;
@@ -336,6 +357,14 @@ export async function collectWater(
           }
           if (cost !== null) {
             points.push({ metric: 'israel_utility_water_cost_estimate_ils', labels, timestampMs, value: cost });
+          }
+          if (previousMonthCost !== null) {
+            points.push({
+              metric: 'israel_utility_water_cost_estimate_previous_month_ils',
+              labels: { ...labels, month: previousMonthLabel },
+              timestampMs,
+              value: previousMonthCost,
+            });
           }
         }
       }
@@ -530,6 +559,28 @@ function walkBackwardFromAnchor(
   return readings;
 }
 
+/**
+ * `ConsumptionResult.periods` (raw UTC-timestamped intervals), filtered down
+ * to `monthKey` (YYYY-MM) and mapped to local-day `{date, consumption}`
+ * entries — the same parsing `collectElectricity`'s own day loop does
+ * inline, extracted here so the previous-month bootstrap below can reuse it
+ * without a second, more entangled copy.
+ */
+function periodsForMonth(periods: PeriodConsumption[], monthKey: string): Array<{ date: string; consumption: number }> {
+  const days: Array<{ date: string; consumption: number }> = [];
+  for (const period of periods) {
+    const parsedInterval = new Date(period.interval);
+    if (!Number.isFinite(parsedInterval.getTime())) {
+      continue; // an unparseable interval must never produce a NaN sample timestamp
+    }
+    const date = isoDate(parsedInterval);
+    if (date.slice(0, 7) === monthKey) {
+      days.push({ date, consumption: period.consumption });
+    }
+  }
+  return days;
+}
+
 export interface ElectricityBackfillOptions {
   /**
    * Also reconstruct `israel_utility_electricity_meter_reading_kwh`. Unlike
@@ -592,6 +643,19 @@ export async function collectElectricity(
   const dailyByDate = new Map<string, number>();
   const points: SamplePoint[] = [];
   const today = isoDate(new Date());
+
+  // One extra month fetched before the requested range starts, so every
+  // requested month's own "previous month" cost comparison is available —
+  // not just months after the first one requested. Rolled forward at the
+  // end of each loop iteration below instead of re-fetched, since each
+  // month already needs its own MONTHLY call anyway.
+  const firstMonthStart = enumerateMonthStarts(from, to)[0] ?? from;
+  const priorMonthStart = `${shiftDays(firstMonthStart, -1).slice(0, 7)}-01`;
+  log.info(`Electricity backfill: fetching ${priorMonthStart.slice(0, 7)} (for last-month comparison)...`);
+  const priorMonthly = await client.getConsumption(contract.contractId, ReadingResolution.MONTHLY, priorMonthStart);
+  let previousMonthDays = periodsForMonth(priorMonthly.periods, priorMonthStart.slice(0, 7));
+  let previousMonthLabel = monthAbbreviation(priorMonthStart);
+
   for (const monthStart of enumerateMonthStarts(from, to)) {
     log.info(`Electricity backfill: fetching ${monthStart.slice(0, 7)}...`);
     const monthly = await client.getConsumption(contract.contractId, ReadingResolution.MONTHLY, monthStart);
@@ -627,6 +691,19 @@ export async function collectElectricity(
     // (or month-to-date) regardless of the requested `fromDate`'s day —
     // but only days within [from, to] are actually written.
     monthDays.sort((a, b) => a.date.localeCompare(b.date));
+    // A day count of 0 means genuinely no data that far back (e.g. the
+    // account didn't exist yet) — `electricityMonthlyCostEstimate` returns 0
+    // for an empty array whenever pricing is configured, which would read as
+    // "last month cost ₪0" rather than "unavailable", so it's guarded here.
+    const previousMonthCost =
+      previousMonthDays.length > 0
+        ? electricityMonthlyCostEstimate(
+            config,
+            tariffSchedule,
+            previousMonthDays.map((day) => ({ date: parseYmdNoon(day.date), consumption: day.consumption })),
+          )
+        : null;
+
     let cumulative = 0;
     let cumulativeCost = 0;
     for (const { date, consumption } of monthDays) {
@@ -649,8 +726,21 @@ export async function collectElectricity(
         if (rate !== null) {
           points.push({ metric: 'israel_utility_electricity_cost_estimate_monthly_ils', labels, timestampMs, value: cumulativeCost });
         }
+        if (previousMonthCost !== null) {
+          points.push({
+            metric: 'israel_utility_electricity_cost_estimate_previous_month_ils',
+            labels: { ...labels, month: previousMonthLabel },
+            timestampMs,
+            value: previousMonthCost,
+          });
+        }
       }
     }
+
+    // This month becomes "previous month" for the next iteration, instead
+    // of re-fetching it — `monthDays` already has exactly what's needed.
+    previousMonthDays = monthDays;
+    previousMonthLabel = monthAbbreviation(monthStart);
 
     if (options.includeMeterReading) {
       const monthDailyConsumption = new Map(monthDays.map((day) => [day.date, day.consumption]));
