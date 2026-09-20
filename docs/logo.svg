@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="israel-utility-exporter logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fde047"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="4" y="4" width="192" height="192" rx="40" fill="url(#bg)"/>
+
+  <!-- Star of David, subtle frame referencing Israel -->
+  <path d="M100,20 L30.7,140 L169.3,140 Z" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-opacity="0.55" stroke-linejoin="round"/>
+  <path d="M100,180 L169.3,60 L30.7,60 Z" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-opacity="0.55" stroke-linejoin="round"/>
+
+  <!-- water drop, centered -->
+  <path d="M50,112.5 C50,90.5 70,62.5 100,37.5 C130,62.5 150,90.5 150,112.5 C150,140.5 128,162.5 100,162.5 C72,162.5 50,140.5 50,112.5 Z"
+        fill="url(#drop)" stroke="#67e8f9" stroke-width="2" stroke-opacity="0.5"/>
+
+  <!-- lightning bolt, electricity -->
+  <path d="M104,77.5 L64,125.5 L100,125.5 L96,157.5 L136,109.5 L100,109.5 Z"
+        fill="url(#bolt)" stroke="#0f172a" stroke-width="3" stroke-linejoin="round"/>
+</svg>

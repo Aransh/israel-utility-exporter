@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" alt="israel-utility-exporter logo" width="120" height="120">
+</p>
+
 # israel-utility-exporter
 
 [![build](https://img.shields.io/github/actions/workflow/status/Aransh/israel-utility-exporter/build.yml?branch=main&logo=github&label=build)](https://github.com/Aransh/israel-utility-exporter/actions/workflows/build.yml)
