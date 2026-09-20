@@ -1,12 +1,12 @@
-<p align="center">
-  <img src="docs/logo.png" alt="israel-utility-exporter logo" width="120" height="120">
-</p>
-
 # israel-utility-exporter
 
 [![build](https://img.shields.io/github/actions/workflow/status/Aransh/israel-utility-exporter/build.yml?branch=main&logo=github&label=build)](https://github.com/Aransh/israel-utility-exporter/actions/workflows/build.yml)
 [![docker](https://img.shields.io/docker/v/aransh/israel-utility-exporter?sort=semver&logo=docker&logoColor=white&label=docker)](https://hub.docker.com/r/aransh/israel-utility-exporter)
 [![license](https://img.shields.io/github/license/Aransh/israel-utility-exporter?color=blue)](LICENSE)
+
+<p align="center">
+  <img src="docs/logo.png" alt="israel-utility-exporter logo" width="120" height="120">
+</p>
 
 A [Prometheus](https://prometheus.io) exporter for Israeli household water
 ([Read Your Meter Pro](https://rym-pro.com), ARAD meters) and electricity
