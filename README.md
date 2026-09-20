@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="israel-utility-exporter logo" width="120" height="120">
+  <img src="docs/logo.png" alt="israel-utility-exporter logo" width="120" height="120">
 </p>
 
 # israel-utility-exporter
