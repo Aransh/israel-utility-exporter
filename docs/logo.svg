@@ -12,19 +12,27 @@
       <stop offset="0" stop-color="#fde047"/>
       <stop offset="1" stop-color="#f59e0b"/>
     </linearGradient>
+    <clipPath id="flagClip">
+      <circle cx="170" cy="170" r="23"/>
+    </clipPath>
   </defs>
 
   <rect x="4" y="4" width="192" height="192" rx="40" fill="url(#bg)"/>
 
-  <!-- Star of David, subtle frame referencing Israel -->
-  <path d="M100,20 L30.7,140 L169.3,140 Z" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-opacity="0.55" stroke-linejoin="round"/>
-  <path d="M100,180 L169.3,60 L30.7,60 Z" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-opacity="0.55" stroke-linejoin="round"/>
-
-  <!-- water drop, centered -->
-  <path d="M50,112.5 C50,90.5 70,62.5 100,37.5 C130,62.5 150,90.5 150,112.5 C150,140.5 128,162.5 100,162.5 C72,162.5 50,140.5 50,112.5 Z"
+  <!-- water drop -->
+  <path d="M47,90.75 C47,75.35 61,55.75 82,38.25 C103,55.75 117,75.35 117,90.75 C117,110.35 101.6,125.75 82,125.75 C62.4,125.75 47,110.35 47,90.75 Z"
         fill="url(#drop)" stroke="#67e8f9" stroke-width="2" stroke-opacity="0.5"/>
 
   <!-- lightning bolt, electricity -->
-  <path d="M104,77.5 L64,125.5 L100,125.5 L96,157.5 L136,109.5 L100,109.5 Z"
+  <path d="M84.8,66.25 L56.8,99.85 L82,99.85 L79.2,122.25 L107.2,88.65 L82,88.65 Z"
         fill="url(#bolt)" stroke="#0f172a" stroke-width="3" stroke-linejoin="round"/>
+
+  <!-- small Israeli flag badge, corner pin -->
+  <circle cx="170" cy="170" r="27" fill="#ffffff" stroke="#0f172a" stroke-width="4"/>
+  <g clip-path="url(#flagClip)">
+    <rect x="143" y="164" width="54" height="6" fill="#0038b8"/>
+    <rect x="143" y="176" width="54" height="6" fill="#0038b8"/>
+  </g>
+  <path d="M170,163 L163.94,173.5 L176.06,173.5 Z" fill="none" stroke="#0038b8" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M170,177 L176.06,166.5 L163.94,166.5 Z" fill="none" stroke="#0038b8" stroke-width="1.4" stroke-linejoin="round"/>
 </svg>
