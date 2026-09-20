@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/github/license/Aransh/israel-utility-exporter?color=blue)](LICENSE)
 
 <p align="left">
-  <img src="docs/logo.png" alt="israel-utility-exporter logo" width="120" height="120">
+  <img src="https://raw.githubusercontent.com/Aransh/israel-utility-exporter/main/docs/logo.png" alt="israel-utility-exporter logo" width="120" height="120">
 </p>
 
 A [Prometheus](https://prometheus.io) exporter for Israeli household water
