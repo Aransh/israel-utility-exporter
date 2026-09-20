@@ -13,6 +13,13 @@ import { registry } from './metrics.js';
 import type { WebConfig } from './web-config.js';
 
 export function startServer(port: number, log: Logger, webConfig: WebConfig | null = null): HttpServer | HttpsServer {
+  // Computed once at startup, only when Basic Auth is actually configured —
+  // never pay bcrypt's cost on every process start for the common case where
+  // it isn't. Matches an existing user's own hash cost (falling back to 10)
+  // so an unknown-username lookup and a known one cost the same regardless
+  // of which cost factor this deployment's hashes were generated with.
+  const dummyHash = webConfig?.basicAuthUsers ? makeDummyHash(webConfig.basicAuthUsers) : null;
+
   const handler = (req: IncomingMessage, res: ServerResponse) => {
     const path = (req.url ?? '/').split('?')[0];
 
@@ -23,7 +30,7 @@ export function startServer(port: number, log: Logger, webConfig: WebConfig | nu
       return;
     }
 
-    if (webConfig?.basicAuthUsers && !isAuthorized(req.headers.authorization, webConfig.basicAuthUsers)) {
+    if (webConfig?.basicAuthUsers && !isAuthorized(req.headers.authorization, webConfig.basicAuthUsers, dummyHash!)) {
       res.writeHead(401, { 'Content-Type': 'text/plain', 'WWW-Authenticate': 'Basic realm="israel-utility-exporter"' });
       res.end('unauthorized\n');
       return;
@@ -66,13 +73,27 @@ export function startServer(port: number, log: Logger, webConfig: WebConfig | nu
   return server;
 }
 
-// A bcrypt hash of an unguessable password, compared against when the
-// username isn't found — so a lookup miss costs the same as a wrong password
-// instead of returning early, which would let a timing difference reveal
-// which usernames are configured.
-const DUMMY_HASH = bcrypt.hashSync(randomBytes(32).toString('hex'), 10);
+const DEFAULT_BCRYPT_COST = 10;
 
-function isAuthorized(header: string | undefined, users: Record<string, string>): boolean {
+function bcryptCost(hash: string): number {
+  const cost = Number(/^\$2[aby]?\$(\d{2})\$/.exec(hash)?.[1]);
+  return Number.isInteger(cost) ? cost : DEFAULT_BCRYPT_COST;
+}
+
+/**
+ * A bcrypt hash of an unguessable password, compared against when the
+ * username isn't found — so a lookup miss costs the same as a wrong password
+ * instead of returning early, which would let a timing difference reveal
+ * which usernames are configured. Uses an arbitrary configured user's own
+ * cost factor so the two cases stay matched regardless of how this
+ * deployment's real hashes were generated.
+ */
+function makeDummyHash(users: Record<string, string>): string {
+  const cost = bcryptCost(Object.values(users)[0] ?? '');
+  return bcrypt.hashSync(randomBytes(32).toString('hex'), cost);
+}
+
+function isAuthorized(header: string | undefined, users: Record<string, string>, dummyHash: string): boolean {
   if (header?.slice(0, 6).toLowerCase() !== 'basic ') {
     return false;
   }
@@ -84,5 +105,5 @@ function isAuthorized(header: string | undefined, users: Record<string, string>)
   const user = decoded.slice(0, sep);
   const password = decoded.slice(sep + 1);
   const hash = users[user];
-  return bcrypt.compareSync(password, hash ?? DUMMY_HASH) && hash !== undefined;
+  return bcrypt.compareSync(password, hash ?? dummyHash) && hash !== undefined;
 }

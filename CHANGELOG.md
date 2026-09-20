@@ -40,16 +40,21 @@ the version declaration itself.
 - `backfill-cli.js`'s remote_write client only retried a 429/5xx *response*;
   a network-level failure that never produced one at all — a dropped
   connection, a timeout, a DNS hiccup — aborted the whole batch immediately
-  instead of retrying with the same backoff schedule already used for
-  5xx. A single transient blip during a wide backfill no longer fails the
-  run.
+  instead of retrying with the same backoff schedule already used for 5xx.
+  A single transient blip during a wide backfill no longer fails the run.
+  An unfixable configuration error (a malformed `REMOTE_WRITE_URL`) still
+  fails immediately rather than wasting the full retry budget on something
+  retrying can't fix, and every exhausted-retry failure — network or
+  HTTP — now consistently throws `RemoteWriteError`, instead of a network
+  failure leaking the raw underlying error past the retry loop.
 - The exporter's own Basic Auth check (`WEB_CONFIG_FILE`'s
   `basic_auth_users`) looked up the username first and returned immediately
   on a miss, only paying bcrypt's cost for a username that exists — a timing
   side channel that let a request distinguish a configured username from a
   nonexistent one purely by response time. An unknown username now runs the
-  same bcrypt comparison against a fixed dummy hash, so both cases cost the
-  same.
+  same bcrypt comparison against a dummy hash generated once at startup
+  (only when Basic Auth is actually configured, and at the same cost factor
+  as a real configured user's hash), so both cases cost the same.
 - Both live collectors' `..._cost_estimate_previous_month_ils` gauges
   `.set()` a `month` label that changes every calendar month, but nothing
   ever `.remove()`d the previous value — a Gauge never forgets a label

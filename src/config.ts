@@ -266,6 +266,10 @@ function loadWaterTariffTiers(env: NodeJS.ProcessEnv, normalRatePerCubicMeter: n
 
 function loadElectricityConfig(env: NodeJS.ProcessEnv, dataDir: string, vatPercent: number): ElectricityConfig {
   const israeliId = env.ELECTRICITY_ID?.trim();
+  // The one validator here that isn't a small local helper: the Teudat
+  // Zehut checksum is IEC/Israeli-ID domain logic, not generic config
+  // parsing, so it stays defined alongside IecClient's own use of it
+  // instead of being duplicated here.
   if (!israeliId || !isValidIsraeliId(israeliId)) {
     throw new ConfigError(
       'ELECTRICITY_ENABLED is true but ELECTRICITY_ID is missing or not a valid 9-digit Israeli ID (checksum failed).',
