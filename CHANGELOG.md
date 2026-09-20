@@ -9,6 +9,106 @@ Each released version has a matching `vX.Y.Z` git tag; the release workflow uses
 the section below the matching heading as the GitHub release notes, so keep the
 headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
+## [1.0.0] - 2026-09-20
+
+First stable release. The metric names, config variables, and CLI flags
+documented in the README are now covered by this project's semver policy —
+a breaking change to any of them bumps the major version, same as any other
+1.x project. Nothing in this release changes existing behavior for anyone
+already running 0.6.6 as configured; it's a correctness/hardening pass plus
+the version declaration itself.
+
+### Fixed
+
+- `ELECTRICITY_ID` was only checked against `/^\d{9}$/` at config load; the
+  real Teudat Zehut checksum was validated later, inside `IecClient`'s
+  constructor, on every single poll. A syntactically-valid-but-wrong ID (an
+  easy digit transposition) passed startup validation, then failed forever
+  as a generic "error talking to IEC ... holding last known readings"
+  warning — never surfacing as the actual config mistake it was. The
+  checksum is now validated at config load, alongside every other
+  `ELECTRICITY_ID` check, so a bad ID fails fast at startup like any other
+  misconfiguration.
+- The electricity login CLI's refreshed token was written to
+  `ELECTRICITY_TOKEN_FILE` with a plain `writeFile`, unlike every other piece
+  of state this exporter persists (water's collector state, the electricity
+  collector's own first-run flag), which all go through the shared
+  temp-file-plus-rename helper. A crash mid-write could leave a truncated,
+  unparseable token file, forcing a full manual re-login (interactive OTP)
+  instead of the graceful "start fresh" every other state file gets. Now
+  routed through the same atomic-write helper.
+- `backfill-cli.js`'s remote_write client only retried a 429/5xx *response*;
+  a network-level failure that never produced one at all — a dropped
+  connection, a timeout, a DNS hiccup — aborted the whole batch immediately
+  instead of retrying with the same backoff schedule already used for 5xx.
+  A single transient blip during a wide backfill no longer fails the run.
+  An unfixable configuration error (a malformed `REMOTE_WRITE_URL`) still
+  fails immediately rather than wasting the full retry budget on something
+  retrying can't fix, and every exhausted-retry failure — network or
+  HTTP — now consistently throws `RemoteWriteError`, instead of a network
+  failure leaking the raw underlying error past the retry loop.
+- The exporter's own Basic Auth check (`WEB_CONFIG_FILE`'s
+  `basic_auth_users`) looked up the username first and returned immediately
+  on a miss, only paying bcrypt's cost for a username that exists — a timing
+  side channel that let a request distinguish a configured username from a
+  nonexistent one purely by response time. An unknown username now runs the
+  same bcrypt comparison against a dummy hash generated once at startup
+  (only when Basic Auth is actually configured, and at the same cost factor
+  as a real configured user's hash), so both cases cost the same.
+- Both live collectors' `..._cost_estimate_previous_month_ils` gauges
+  `.set()` a `month` label that changes every calendar month, but nothing
+  ever `.remove()`d the previous value — a Gauge never forgets a label
+  combination once set, so after a year of uptime a single scrape could
+  expose up to 12 stale "previous month" entries at once, all but the
+  current one wrong. Every other month's entry is now pruned before setting
+  the current one. Separately, the electricity collector's own
+  `previousMonthCost !== null` check didn't catch a genuinely empty day list
+  (`electricityMonthlyCostEstimate` returns `0`, not `null`, for an empty
+  array when pricing is configured) — the same guard the backfill CLI
+  already had — so a first month after account creation would have shown
+  "Last month, ₪0" instead of leaving the gauge unset.
+- The "Water Cost Estimate" and "Electricity Cost Estimate (Month to Date)"
+  stat panels could still show **two** "Last month" values at once over the
+  dashboard's default 30-day range (e.g. "Last month, Aug" *and* "Last
+  month, Jul" side by side) even after the stale-label pruning above —
+  reported live against a real deployment. The pruning fix stops the
+  *live* gauge from ever reporting more than one month concurrently, but
+  can't erase samples Prometheus already stored under the just-retired
+  label, and a ~30-day query window always spans at least one month
+  boundary, so both labels legitimately have real data inside it — not a
+  regression in the pruning fix, but an inherent consequence of combining
+  a monthly-rotating label with a ~30-day range that would have recurred
+  every month regardless. Fixed by pinning just these two panels to
+  `timeFrom: 7d`, the same technique "Collector Health" already uses for a
+  similar "current status regardless of browsed range" need — trading away
+  historical-range-browsing for these two panels specifically (they now
+  always reflect "now", like Collector Health) in exchange for keeping the
+  dynamic "Last month, Aug" text without a duplicate. The "Cost Trend"
+  timeseries panels are untouched — successive months in an actual trend
+  line is expected there, not a bug.
+
+### Added
+
+- Dedicated unit tests for `state/atomic-file.ts` — the temp-file-plus-rename
+  helper every piece of persisted state (water/electricity collector state,
+  the IEC token) leans on for its crash-safety guarantee, previously only
+  covered incidentally through collector tests. Covers the atomic write
+  itself (mode 0600, no leftover temp file, an unserialisable value leaving
+  an existing destination untouched), `readJsonFile`'s "start fresh" fallback
+  for a missing or malformed file, and `createWriteQueue`'s ordering and
+  its recovery after a failed write.
+
+### Docs
+
+- Trimmed the README by roughly a third and moved the most detailed parts of
+  the Cost estimation and Historical data backfill sections out to
+  [docs/cost-estimation.md](docs/cost-estimation.md) and
+  [docs/backfill.md](docs/backfill.md), so it fits Docker Hub's repository
+  overview (which rejects anything over 25000 bytes) without losing any of
+  the detail — just moving it one click away.
+- Dashboard screenshots now embed via `raw.githubusercontent.com` instead of
+  a repo-relative path, so they render on Docker Hub too, not just GitHub.
+
 ## [0.6.6] - 2026-09-20
 
 ### Added
@@ -593,7 +693,8 @@ headings in the `## [x.y.z] - YYYY-MM-DD` form.
 - Multi-arch (amd64/arm64) Docker image published to Docker Hub as
   `aransh/israel-utility-exporter`.
 
-[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/Aransh/israel-utility-exporter/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.6.6...v1.0.0
 [0.6.1]: https://github.com/Aransh/israel-utility-exporter/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Aransh/israel-utility-exporter/compare/v0.4.1...v0.5.0

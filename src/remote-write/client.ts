@@ -33,9 +33,11 @@ const DEFAULT_RETRY_BACKOFF_MS = [1_000, 4_000, 15_000];
 
 /**
  * Snappy-compresses and POSTs a `WriteRequest` to a standard Prometheus
- * remote_write endpoint. Retries 429/5xx a bounded number of times with
- * jittered backoff; any other non-2xx (e.g. 400/401) fails immediately since
- * retrying a malformed request or bad auth won't help.
+ * remote_write endpoint. Retries 429/5xx and network-level failures (a
+ * dropped connection, timeout, or DNS hiccup never even reaches the receiver
+ * to produce a status code) a bounded number of times with jittered backoff;
+ * any other non-2xx (e.g. 400/401) fails immediately since retrying a
+ * malformed request or bad auth won't help.
  */
 export async function remoteWrite(settings: RemoteWriteSettings, series: RwTimeSeries[]): Promise<void> {
   if (series.length === 0) {
@@ -43,25 +45,53 @@ export async function remoteWrite(settings: RemoteWriteSettings, series: RwTimeS
   }
   const body = compress(encodeWriteRequest(series));
   const backoff = settings.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
+  // Parsed once, outside the retry loop: a malformed REMOTE_WRITE_URL is a
+  // configuration error, not a transient one, so it must fail immediately
+  // rather than being retried the same as a dropped connection.
+  let url: URL;
+  try {
+    url = new URL(settings.url);
+  } catch (error) {
+    throw new RemoteWriteError(`invalid REMOTE_WRITE_URL: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const options = buildRequestOptions(settings, url, body);
 
   for (let attempt = 0; ; attempt += 1) {
-    const response = await post(settings, body);
+    let response: { status: number; body: string };
+    try {
+      response = await post(url, options, body, settings.timeoutMs);
+    } catch (error) {
+      await retryOrThrow(
+        backoff,
+        attempt,
+        true,
+        new RemoteWriteError(`remote_write POST to ${url.hostname} failed: ${error instanceof Error ? error.message : String(error)}`),
+      );
+      continue;
+    }
     if (response.status >= 200 && response.status < 300) {
       return;
     }
     const retryable = response.status === 429 || response.status >= 500;
-    const nextDelay = backoff[attempt];
-    if (!retryable || nextDelay === undefined) {
-      throw new RemoteWriteError(`remote_write POST failed: HTTP ${response.status} ${response.body.slice(0, 300)}`);
-    }
-    await sleep(nextDelay * (0.75 + Math.random() * 0.5));
+    await retryOrThrow(
+      backoff,
+      attempt,
+      retryable,
+      new RemoteWriteError(`remote_write POST failed: HTTP ${response.status} ${response.body.slice(0, 300)}`),
+    );
   }
 }
 
-function post(settings: RemoteWriteSettings, body: Buffer): Promise<{ status: number; body: string }> {
-  const url = new URL(settings.url);
-  const isHttps = url.protocol === 'https:';
+/** Sleeps for this attempt's backoff and returns, or throws `error` if retries are exhausted or `retryable` is false. */
+async function retryOrThrow(backoff: number[], attempt: number, retryable: boolean, error: RemoteWriteError): Promise<void> {
+  const nextDelay = backoff[attempt];
+  if (!retryable || nextDelay === undefined) {
+    throw error;
+  }
+  await sleep(nextDelay * (0.75 + Math.random() * 0.5));
+}
 
+function buildRequestOptions(settings: RemoteWriteSettings, url: URL, body: Buffer): RequestOptions {
   const headers: Record<string, string> = {
     'Content-Encoding': 'snappy',
     'Content-Type': 'application/x-protobuf',
@@ -74,7 +104,7 @@ function post(settings: RemoteWriteSettings, body: Buffer): Promise<{ status: nu
     headers.authorization = `Basic ${Buffer.from(`${settings.username}:${settings.password}`).toString('base64')}`;
   }
 
-  const options: RequestOptions = {
+  return {
     method: 'POST',
     headers,
     timeout: settings.timeoutMs,
@@ -83,7 +113,10 @@ function post(settings: RemoteWriteSettings, body: Buffer): Promise<{ status: nu
     key: settings.tls?.key,
     rejectUnauthorized: !settings.tls?.insecureSkipVerify,
   };
+}
 
+function post(url: URL, options: RequestOptions, body: Buffer, timeoutMs: number): Promise<{ status: number; body: string }> {
+  const isHttps = url.protocol === 'https:';
   return new Promise((resolve, reject) => {
     const req = (isHttps ? httpsRequest : httpRequest)(url, options, (res) => {
       const chunks: Buffer[] = [];
@@ -92,7 +125,7 @@ function post(settings: RemoteWriteSettings, body: Buffer): Promise<{ status: nu
         resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') });
       });
     });
-    req.on('timeout', () => req.destroy(new RemoteWriteError(`remote_write POST to ${url.hostname} timed out after ${settings.timeoutMs}ms`)));
+    req.on('timeout', () => req.destroy(new RemoteWriteError(`remote_write POST to ${url.hostname} timed out after ${timeoutMs}ms`)));
     req.on('error', (error) => reject(error instanceof Error ? error : new RemoteWriteError(String(error))));
     req.end(body);
   });

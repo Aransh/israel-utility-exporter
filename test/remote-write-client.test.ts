@@ -147,6 +147,26 @@ test('gives up after exhausting the retry budget on persistent 5xx', async () =>
   );
 });
 
+test('fails immediately on a malformed url, without retrying', async () => {
+  await assert.rejects(() => remoteWrite({ url: 'not a url', timeoutMs: 5000, retryBackoffMs: [10, 10, 10] }, SERIES), RemoteWriteError);
+});
+
+test('retries a connection failure the same as a 5xx, then wraps the exhausted error in RemoteWriteError', async () => {
+  // Bind a server, then close it immediately, so its port reliably refuses
+  // every connection attempt (ECONNREFUSED) rather than depending on some
+  // fixed low port being unused on the test machine.
+  const server = createServer((_req, res) => res.end());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    throw new Error('expected a network address');
+  }
+  const url = `http://127.0.0.1:${address.port}`;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+
+  await assert.rejects(() => remoteWrite({ url, timeoutMs: 5000, retryBackoffMs: [10, 10, 10] }, SERIES), RemoteWriteError);
+});
+
 test('an empty series list is a no-op and sends nothing', async () => {
   await withServer(
     () => ({ status: 200 }),

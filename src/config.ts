@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import { grossUpForVat, type WaterTariffTiers } from './cost/tariff.js';
+import { isValidIsraeliId } from './electricity/iec-client.js';
 import type { WeeklyWindow } from './water/rympro-client.js';
 
 export class ConfigError extends Error {}
@@ -265,8 +266,14 @@ function loadWaterTariffTiers(env: NodeJS.ProcessEnv, normalRatePerCubicMeter: n
 
 function loadElectricityConfig(env: NodeJS.ProcessEnv, dataDir: string, vatPercent: number): ElectricityConfig {
   const israeliId = env.ELECTRICITY_ID?.trim();
-  if (!israeliId || !/^\d{9}$/.test(israeliId)) {
-    throw new ConfigError('ELECTRICITY_ENABLED is true but ELECTRICITY_ID is missing or not a 9-digit Israeli ID.');
+  // The one validator here that isn't a small local helper: the Teudat
+  // Zehut checksum is IEC/Israeli-ID domain logic, not generic config
+  // parsing, so it stays defined alongside IecClient's own use of it
+  // instead of being duplicated here.
+  if (!israeliId || !isValidIsraeliId(israeliId)) {
+    throw new ConfigError(
+      'ELECTRICITY_ENABLED is true but ELECTRICITY_ID is missing or not a valid 9-digit Israeli ID (checksum failed).',
+    );
   }
 
   const tariffMode: ElectricityTariffMode = env.ELECTRICITY_TARIFF_MODE === 'schedule' ? 'schedule' : 'flat';

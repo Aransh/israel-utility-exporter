@@ -163,7 +163,7 @@ test('VAT_PERCENT defaults to 18% and grosses up WATER_PRICE_PER_CUBIC_METER', (
 });
 
 test('VAT_PERCENT defaults to 18% and grosses up ELECTRICITY_PRICE_PER_KWH', () => {
-  const config = loadConfig(baseEnv({ ELECTRICITY_ENABLED: 'true', ELECTRICITY_ID: '123456789', ELECTRICITY_PRICE_PER_KWH: '0.5383' }));
+  const config = loadConfig(baseEnv({ ELECTRICITY_ENABLED: 'true', ELECTRICITY_ID: '000000000', ELECTRICITY_PRICE_PER_KWH: '0.5383' }));
   assert.ok(Math.abs(config.electricity!.pricePerKwh! - 0.635194) < 1e-9);
   assert.equal(config.electricity!.vatPercent, 18);
 });
