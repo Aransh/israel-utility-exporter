@@ -1,38 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="israel-utility-exporter logo">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0f172a"/>
-      <stop offset="1" stop-color="#1e293b"/>
-    </linearGradient>
-    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#22d3ee"/>
-      <stop offset="1" stop-color="#0891b2"/>
-    </linearGradient>
-    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#fde047"/>
-      <stop offset="1" stop-color="#f59e0b"/>
-    </linearGradient>
-    <clipPath id="flagClip">
-      <circle cx="170" cy="170" r="23"/>
-    </clipPath>
-  </defs>
+  <rect x="3" y="3" width="194" height="194" rx="20" fill="#ffffff" stroke="#dbe4ee" stroke-width="2"/>
 
-  <rect x="4" y="4" width="192" height="192" rx="40" fill="url(#bg)"/>
+  <rect x="18" y="32" width="164" height="14" rx="2" fill="#0038b8"/>
+  <rect x="18" y="154" width="164" height="14" rx="2" fill="#0038b8"/>
 
-  <!-- water drop -->
-  <path d="M47,90.75 C47,75.35 61,55.75 82,38.25 C103,55.75 117,75.35 117,90.75 C117,110.35 101.6,125.75 82,125.75 C62.4,125.75 47,110.35 47,90.75 Z"
-        fill="url(#drop)" stroke="#67e8f9" stroke-width="2" stroke-opacity="0.5"/>
-
-  <!-- lightning bolt, electricity -->
-  <path d="M84.8,66.25 L56.8,99.85 L82,99.85 L79.2,122.25 L107.2,88.65 L82,88.65 Z"
-        fill="url(#bolt)" stroke="#0f172a" stroke-width="3" stroke-linejoin="round"/>
-
-  <!-- small Israeli flag badge, corner pin -->
-  <circle cx="170" cy="170" r="27" fill="#ffffff" stroke="#0f172a" stroke-width="4"/>
-  <g clip-path="url(#flagClip)">
-    <rect x="143" y="164" width="54" height="6" fill="#0038b8"/>
-    <rect x="143" y="176" width="54" height="6" fill="#0038b8"/>
-  </g>
-  <path d="M170,163 L163.94,173.5 L176.06,173.5 Z" fill="none" stroke="#0038b8" stroke-width="1.4" stroke-linejoin="round"/>
-  <path d="M170,177 L176.06,166.5 L163.94,166.5 Z" fill="none" stroke="#0038b8" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M100,55 C132,80 136,95 136,109 A36,36 0 1 1 64,109 C64,95 68,80 100,55 Z" fill="#0038b8"/>
+  <path d="M112,65 L82,108 L100,108 L92,140 L122,97 L100,97 Z" fill="#ffffff"/>
 </svg>
