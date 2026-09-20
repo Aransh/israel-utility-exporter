@@ -112,9 +112,10 @@
       "id": 4,
       "type": "stat",
       "title": "Water Cost Estimate",
-      "description": "Estimated cost so far this month, the portal's forecast for month-end, and last month's estimated final cost. Includes VAT (see VAT_PERCENT).",
+      "description": "Estimated cost so far this month, the portal's forecast for month-end, and last month's estimated final cost. Includes VAT (see VAT_PERCENT). Pinned to the last 7 days, independent of the dashboard's selected range, so a stale previous-month value doesn't linger in view for the ~30 days it'd otherwise take to fall out of a default-range query — see the README's \"Behavior worth knowing\".",
       "gridPos": { "x": 0, "y": 7, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "timeFrom": "7d",
       "targets": [
         { "expr": "last_over_time(israel_utility_water_cost_estimate_ils[3d])", "legendFormat": "Month to date, ${__to:date:MMM} (meter {{meter_id}})", "refId": "A" },
         { "expr": "last_over_time(israel_utility_water_cost_estimate_forecast_ils[3d])", "legendFormat": "Forecast, month end (meter {{meter_id}})", "refId": "B" },
@@ -313,9 +314,10 @@
       "id": 23,
       "type": "stat",
       "title": "Electricity Cost Estimate (Month to Date)",
-      "description": "Estimated cost so far this month, and last month's estimated final cost. Includes VAT (see VAT_PERCENT).",
+      "description": "Estimated cost so far this month, and last month's estimated final cost. Includes VAT (see VAT_PERCENT). Pinned to the last 7 days, independent of the dashboard's selected range, so a stale previous-month value doesn't linger in view for the ~30 days it'd otherwise take to fall out of a default-range query — see the README's \"Behavior worth knowing\".",
       "gridPos": { "x": 0, "y": 36, "w": 10, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "timeFrom": "7d",
       "targets": [
         { "expr": "last_over_time(israel_utility_electricity_cost_estimate_monthly_ils[3d])", "legendFormat": "Month to date, ${__to:date:MMM} (contract {{contract_id}})", "refId": "A" },
         { "expr": "last_over_time(israel_utility_electricity_cost_estimate_previous_month_ils[3d])", "legendFormat": "Last month, {{month}} (contract {{contract_id}})", "refId": "B" }

@@ -67,6 +67,25 @@ the version declaration itself.
   array when pricing is configured) — the same guard the backfill CLI
   already had — so a first month after account creation would have shown
   "Last month, ₪0" instead of leaving the gauge unset.
+- The "Water Cost Estimate" and "Electricity Cost Estimate (Month to Date)"
+  stat panels could still show **two** "Last month" values at once over the
+  dashboard's default 30-day range (e.g. "Last month, Aug" *and* "Last
+  month, Jul" side by side) even after the stale-label pruning above —
+  reported live against a real deployment. The pruning fix stops the
+  *live* gauge from ever reporting more than one month concurrently, but
+  can't erase samples Prometheus already stored under the just-retired
+  label, and a ~30-day query window always spans at least one month
+  boundary, so both labels legitimately have real data inside it — not a
+  regression in the pruning fix, but an inherent consequence of combining
+  a monthly-rotating label with a ~30-day range that would have recurred
+  every month regardless. Fixed by pinning just these two panels to
+  `timeFrom: 7d`, the same technique "Collector Health" already uses for a
+  similar "current status regardless of browsed range" need — trading away
+  historical-range-browsing for these two panels specifically (they now
+  always reflect "now", like Collector Health) in exchange for keeping the
+  dynamic "Last month, Aug" text without a duplicate. The "Cost Trend"
+  timeseries panels are untouched — successive months in an actual trend
+  line is expected there, not a bug.
 
 ### Added
 
