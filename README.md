@@ -4,7 +4,7 @@
 [![docker](https://img.shields.io/docker/v/aransh/israel-utility-exporter?sort=semver&logo=docker&logoColor=white&label=docker)](https://hub.docker.com/r/aransh/israel-utility-exporter)
 [![license](https://img.shields.io/github/license/Aransh/israel-utility-exporter?color=blue)](LICENSE)
 
-<p align="center">
+<p align="left">
   <img src="docs/logo.png" alt="israel-utility-exporter logo" width="120" height="120">
 </p>
 
