@@ -47,15 +47,6 @@ groups:
           summary: 'Electricity collector has failed 3+ consecutive polls'
           description: 'Check the exporter logs. If it reports no token or a refresh failure, re-run the login CLI (see README).'
 
-      - alert: ElectricityTokenExpiringSoon
-        expr: (israel_utility_electricity_token_expires_timestamp_seconds - time()) < 3 * 86400
-        for: 0m
-        labels:
-          severity: info
-        annotations:
-          summary: 'IEC session token expires within 3 days'
-          description: 'The exporter refreshes this automatically most of the time; this fires when it is unexpectedly close to expiry, which usually means the refresh token itself is about to lapse. Re-run the login CLI if the electricity metrics stop updating.'
-
   # Example budget alerts: NOT safe to run as shipped, except
   # WaterMonthlyConsumptionOverBudget in WATER_TARIFF_MODE=tiered (it's
   # self-sizing — see its own comment). Consumption varies with household

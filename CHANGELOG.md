@@ -9,6 +9,32 @@ Each released version has a matching `vX.Y.Z` git tag; the release workflow uses
 the section below the matching heading as the GitHub release notes, so keep the
 headings in the `## [x.y.z] - YYYY-MM-DD` form.
 
+## [1.1.0] - 2026-09-21
+
+### Added
+
+- A project logo (a document-export icon with an Israeli-flag-styled Star of
+  David, matching what this project actually does) at the top of the README.
+- The shipped Grafana dashboard JSON now carries `__inputs`/`__requires`
+  (Grafana's "export for external sharing" format), so it's accepted by the
+  grafana.com dashboards registry instead of showing "Old dashboard JSON
+  format" — while still provisioning and importing normally into a
+  standalone Grafana instance.
+
+### Fixed
+
+- The `ElectricityTokenExpiringSoon` alert could never fire correctly: it
+  compared `israel_utility_electricity_token_expires_timestamp_seconds`
+  against a 3-day threshold, but that gauge tracks the short-lived (~1 hour)
+  session token, which the exporter refreshes automatically about 5 minutes
+  before it expires — so the remaining time is always minutes, never days.
+  It fired immediately on install no matter how low the threshold was set,
+  and reflected nothing about the actual refresh token's health (Okta
+  doesn't expose that token's expiry at all). Removed the alert; the real
+  "needs re-login" signal is already `ElectricityScrapeFailing`, which fires
+  when a refresh genuinely fails. Corrected the README and metric help text,
+  which made the same false promise.
+
 ## [1.0.0] - 2026-09-20
 
 First stable release. The metric names, config variables, and CLI flags

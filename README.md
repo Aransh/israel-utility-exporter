@@ -103,10 +103,13 @@ ELECTRICITY_ID=123456789
 ```
 
 Then start (or restart) the exporter — it loads and automatically refreshes
-that token from then on. `israel_utility_electricity_token_expires_timestamp_seconds`
-and the `ElectricityTokenExpiringSoon` alert give warning before the refresh
-token itself eventually needs a fresh login (IEC's own refresh tokens are
-long-lived, but not eternal).
+that token from then on. IEC's own refresh tokens are long-lived but not
+eternal; when one finally lapses, refreshing fails and that surfaces as
+`ElectricityScrapeFailing` with a log line telling you to re-run the login
+CLI. There's no way to get advance warning before that happens — Okta doesn't
+expose the refresh token's own expiry, only the short-lived (~1 hour) session
+token's, which is refreshed automatically and says nothing about the refresh
+token's health.
 
 ## Configuration
 
@@ -256,7 +259,7 @@ exposition format itself verified by Prometheus's own tooling.
 | `israel_utility_electricity_cost_estimate_ils` | Estimated cost of the newest published day, if priced, including VAT. |
 | `israel_utility_electricity_cost_estimate_monthly_ils` | Month-to-date cost, if priced, including VAT — each published day priced at its own rate and summed. |
 | `israel_utility_electricity_cost_estimate_previous_month_ils` | Last calendar month's final cost, priced the same way (today's tariff, not necessarily last month's). Carries a `month` label (e.g. `month="Jul"`) naming the calendar month it covers. |
-| `israel_utility_electricity_token_expires_timestamp_seconds` | When the current session token expires. |
+| `israel_utility_electricity_token_expires_timestamp_seconds` | When the current (short-lived, auto-refreshed) session token expires. Informational only — not a signal of the underlying refresh token's health. |
 | `israel_utility_electricity_contract_info` | Always 1; carries `contract_number`/`address` for dashboard joins. |
 | `israel_utility_electricity_scrape_success` / `..._last_success_timestamp_seconds` / `..._consecutive_failures` | Collector health. |
 
