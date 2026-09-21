@@ -183,7 +183,7 @@ export const electricityGauges = {
   }),
   tokenExpiresTimestampSeconds: new Gauge({
     name: 'israel_utility_electricity_token_expires_timestamp_seconds',
-    help: 'Unix time the current IEC session token expires. Falls back to re-login being needed once the refresh token itself lapses.',
+    help: 'Unix time the current (short-lived, auto-refreshed) IEC session token expires. Informational only — not a signal of the underlying refresh token expiring; that surfaces as scrape failures instead.',
     labelNames: ELECTRICITY_LABELS,
     registers: [registry],
   }),
