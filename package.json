@@ -8,7 +8,7 @@
   "private": true,
   "main": "dist/index.js",
   "engines": {
-    "node": "^22.10.0 || ^24.0.0"
+    "node": "^22.10.0 || ^24.0.0 || ^26.0.0"
   },
   "keywords": [
     "prometheus",
@@ -43,7 +43,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^24.10.1",
+    "@types/node": "^26.0.0",
     "@types/snappyjs": "^0.7.1",
     "eslint": "^10.0.0",
     "rimraf": "^6.1.0",
